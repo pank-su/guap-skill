@@ -1,0 +1,9 @@
+README.md
+guap.py
+pyproject.toml
+guap_skill.egg-info/PKG-INFO
+guap_skill.egg-info/SOURCES.txt
+guap_skill.egg-info/dependency_links.txt
+guap_skill.egg-info/entry_points.txt
+guap_skill.egg-info/requires.txt
+guap_skill.egg-info/top_level.txt
