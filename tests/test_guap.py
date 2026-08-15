@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 import unittest
+from pathlib import Path
 
-from guap import materials_list, profile_data, task_detail, task_list
+
+SCRIPT = Path(__file__).resolve().parents[1] / "skills/guap-pro/guap.py"
+spec = importlib.util.spec_from_file_location("guap_cli", SCRIPT)
+assert spec and spec.loader
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
 
 
 class ParserTests(unittest.TestCase):
@@ -16,7 +25,7 @@ class ParserTests(unittest.TestCase):
           <td>20.03.2026</td><td>today</td><td><a href='/inside/profile/9'>Teacher</a></td>
         </tr></table>
         """
-        result = task_list(html)
+        result = module.parse_tasks(html)
         self.assertEqual(result[0]["id"], 123)
         self.assertEqual(result[0]["subject"], "Math")
         self.assertEqual(result[0]["points_max"], "5")
@@ -29,17 +38,17 @@ class ParserTests(unittest.TestCase):
         <h5>Предельная дата выполнения: <span>20.03.2026</span></h5>
         <h5>Описание задания</h5><p>Explain the method.</p>
         """
-        result = task_detail(html, 123)
+        result = module.parse_task(html, 123)
         self.assertEqual(result["id"], 123)
         self.assertEqual(result["deadline"], "20.03.2026")
         self.assertEqual(result["description"], "Explain the method.")
 
     def test_materials_and_profile(self) -> None:
-        materials = materials_list(
+        materials = module.parse_materials(
             "<table><tr><td><a href='/download/1'>file</a></td><td>Math</td><td>Guide</td><td>today</td><td>Teacher</td></tr></table>"
         )
         self.assertEqual(materials[0]["name"], "Guide")
-        profile = profile_data("<h3 class='text-center'>Student</h3><h5>Группа: <span>M412</span></h5>")
+        profile = module.parse_profile("<h3 class='text-center'>Student</h3><h5>Группа: <span>M412</span></h5>")
         self.assertEqual(profile["full_name"], "Student")
         self.assertEqual(profile["Группа"], "M412")
 

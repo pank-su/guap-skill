@@ -14,7 +14,7 @@ metadata:
 
 # guap-pro
 
-Use the standalone `guap.py` CLI to read the GUAP personal cabinet at
+Use the standalone, dependency-free `guap.py` CLI to read the GUAP personal cabinet at
 `pro.guap.ru`, then apply the teacher and subject references in this repository.
 This skill depends on the generic `labflow` skill for task context, coding,
 mathematics, reporting, and self-review. It contains no MCP server.
@@ -29,32 +29,33 @@ Do not use it for Moodle. Moodle is a separate future project.
 
 ## Prerequisites
 
-- Python 3.10+.
-- Install dependencies with `uv sync`.
+- Python 3.10+ with the standard library only.
 - A GUAP account.
 - `labflow` available as the generic workflow skill.
 
 ## CLI
 
-From the repository root:
+From the repository root, or from the installed skill directory:
 
 ```bash
-uv run python guap.py pro auth
-uv run python guap.py pro check
-uv run python guap.py pro tasks --format json
-uv run python guap.py pro task <TASK_ID> --format json
-uv run python guap.py pro materials --format json
-uv run python guap.py pro profile --format json
+python skills/guap-pro/guap.py pro auth
+python skills/guap-pro/guap.py pro check
+python skills/guap-pro/guap.py pro tasks --format json
+python skills/guap-pro/guap.py pro task <TASK_ID> --format json
+python skills/guap-pro/guap.py pro materials --format json
+python skills/guap-pro/guap.py pro profile --format json
 ```
 
-Authentication opens a browser. The user enters credentials manually; the CLI
-stores only a session cookie file under `~/.config/guap-skill/`. Never commit it.
+`pro auth` asks the user to paste the `Cookie` request header copied from their
+browser. The CLI stores only a session cookie file under
+`~/.config/guap-skill/cookie.txt`. No browser automation or external package is
+required. Never commit the cookie file.
 
 ## Procedure
 
-1. Run `guap.py pro check`.
-2. If authentication is invalid, ask the user to complete `guap.py pro auth`.
-3. Retrieve the full task with `guap.py pro task <ID> --format json`.
+1. Run `python skills/guap-pro/guap.py pro check`.
+2. If authentication is invalid, ask the user to complete `python skills/guap-pro/guap.py pro auth`.
+3. Retrieve the full task with `python skills/guap-pro/guap.py pro task <ID> --format json`.
 4. Load `references/guap-rules.md`.
 5. Load the matching teacher and subject references.
 6. Copy only current, confirmed requirements into the labflow context.

@@ -1,40 +1,35 @@
 # guap-skill
 
-Standalone GUAP Agent Skill and Python CLI. This repository does **not** contain
-an MCP server.
+Standalone GUAP Agent Skill and dependency-free Python CLI. This repository does
+**not** contain an MCP server and does not require package installation or a build.
 
 ## Contents
 
 ```text
 skills/guap-pro/SKILL.md
+skills/guap-pro/guap.py
 skills/guap-pro/references/
-guap.py
-pyproject.toml
+tests/
 ```
 
 The skill depends on the generic [`labflow`](https://github.com/pank-su/labflow)
 skill. It adds GUAP-specific rules, teacher patterns, subject patterns, and a
 read-only CLI for `pro.guap.ru`.
 
-## Install
-
-```bash
-uv sync
-```
-
 ## CLI
 
 ```bash
-uv run guap-pro pro auth
-uv run guap-pro pro check
-uv run guap-pro pro tasks --format json
-uv run guap-pro pro task <TASK_ID> --format json
-uv run guap-pro pro materials --format json
-uv run guap-pro pro profile --format json
+python skills/guap-pro/guap.py pro auth
+python skills/guap-pro/guap.py pro check
+python skills/guap-pro/guap.py pro tasks --format json
+python skills/guap-pro/guap.py pro task <TASK_ID> --format json
+python skills/guap-pro/guap.py pro materials --format json
+python skills/guap-pro/guap.py pro profile --format json
 ```
 
-`guap.py` uses direct HTTP requests and HTML parsing. Authentication is completed
-by the user in a browser; the password is never entered by the agent.
+The CLI uses only `urllib` and `html.parser` from the Python standard library.
+`pro auth` asks the user to paste the browser Cookie header and saves it to
+`~/.config/guap-skill/cookie.txt`. The agent never receives a password.
 
 ## References
 
