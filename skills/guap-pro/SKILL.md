@@ -46,10 +46,11 @@ python skills/guap-pro/guap.py pro materials --format json
 python skills/guap-pro/guap.py pro profile --format json
 ```
 
-`pro auth` asks the user to paste the `Cookie` request header copied from their
-browser. The CLI stores only a session cookie file under
-`~/.config/guap-skill/cookie.txt`. No browser automation or external package is
-required. Never commit the cookie file.
+`pro auth` launches an isolated Chrome/Chromium profile with remote debugging.
+The user completes login in that window; the standard-library CLI reads the
+resulting GUAP cookies through Chrome DevTools Protocol and stores only a session
+cookie file under `~/.config/guap-skill/cookie.txt`. No Python browser package is
+required. If Chrome is unavailable, `--cookie-file` remains a manual fallback.
 
 ## Procedure
 

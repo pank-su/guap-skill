@@ -27,9 +27,10 @@ python skills/guap-pro/guap.py pro materials --format json
 python skills/guap-pro/guap.py pro profile --format json
 ```
 
-The CLI uses only `urllib` and `html.parser` from the Python standard library.
-`pro auth` asks the user to paste the browser Cookie header and saves it to
-`~/.config/guap-skill/cookie.txt`. The agent never receives a password.
+The CLI uses `urllib`, `html.parser`, and a small standard-library WebSocket/CDP
+client. `pro auth` launches an isolated Chrome/Chromium profile, lets the user
+log in, and reads the resulting cookies without Playwright or Selenium. The
+agent never receives a password. A manual `--cookie-file` fallback is available.
 
 ## References
 

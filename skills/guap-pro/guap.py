@@ -4,11 +4,20 @@
 from __future__ import annotations
 
 import argparse
-import getpass
+import base64
+import hashlib
 import html
 import json
 import os
+import secrets
+import shlex
+import shutil
+import socket
+import struct
+import subprocess
 import sys
+import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -257,12 +266,169 @@ def save_cookie(value: str) -> None:
     COOKIE_PATH.chmod(0o600)
 
 
+def _read_exact(sock: socket.socket, size: int) -> bytes:
+    data = bytearray()
+    while len(data) < size:
+        chunk = sock.recv(size - len(data))
+        if not chunk:
+            raise RuntimeError("Browser debugging connection closed")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def _websocket_connect(url: str) -> socket.socket:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "ws":
+        raise RuntimeError(f"Unsupported browser debugging URL: {url}")
+    sock = socket.create_connection((parsed.hostname, parsed.port or 80), timeout=5)
+    key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+    request = (
+        f"GET {parsed.path or '/'} HTTP/1.1\r\n"
+        f"Host: {parsed.hostname}:{parsed.port or 80}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n\r\n"
+    ).encode("ascii")
+    sock.sendall(request)
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        response.extend(sock.recv(4096))
+    if not response.startswith(b"HTTP/1.1 101"):
+        sock.close()
+        raise RuntimeError("Chrome did not accept the debugging WebSocket")
+    return sock
+
+
+def _websocket_send(sock: socket.socket, payload: str, opcode: int = 1) -> None:
+    data = payload.encode("utf-8")
+    mask = secrets.token_bytes(4)
+    masked = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+    first = 0x80 | opcode
+    length = len(masked)
+    if length < 126:
+        header = bytes([first, 0x80 | length])
+    elif length < 65536:
+        header = bytes([first, 0x80 | 126]) + struct.pack(">H", length)
+    else:
+        header = bytes([first, 0x80 | 127]) + struct.pack(">Q", length)
+    sock.sendall(header + mask + masked)
+
+
+def _websocket_receive(sock: socket.socket) -> tuple[int, bytes]:
+    first, second = _read_exact(sock, 2)
+    opcode = first & 0x0F
+    length = second & 0x7F
+    if length == 126:
+        length = struct.unpack(">H", _read_exact(sock, 2))[0]
+    elif length == 127:
+        length = struct.unpack(">Q", _read_exact(sock, 8))[0]
+    mask = _read_exact(sock, 4) if second & 0x80 else b""
+    data = _read_exact(sock, length)
+    if mask:
+        data = bytes(value ^ mask[index % 4] for index, value in enumerate(data))
+    return opcode, data
+
+
+def _cdp_call(sock: socket.socket, counter: int, method: str, params: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
+    _websocket_send(sock, json.dumps({"id": counter, "method": method, "params": params or {}}))
+    while True:
+        opcode, data = _websocket_receive(sock)
+        if opcode == 9:
+            _websocket_send(sock, data.decode("utf-8", errors="ignore"), opcode=10)
+            continue
+        if opcode != 1:
+            continue
+        message = json.loads(data.decode("utf-8"))
+        if message.get("id") == counter:
+            return counter + 1, message.get("result", {})
+
+
+def _json_url(url: str) -> Any:
+    with urllib.request.urlopen(url, timeout=3) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _browser_binary(explicit: str | None) -> str:
+    candidates = [explicit] if explicit else []
+    candidates += ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"]
+    for candidate in candidates:
+        if candidate and shutil.which(candidate):
+            return candidate
+    raise RuntimeError("Chrome or Chromium was not found. Use --browser-command or provide GUAP_COOKIE manually.")
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool) -> str:
+    """Launch an isolated Chrome profile and read GUAP cookies over CDP."""
+    binary = _browser_binary(browser_command)
+    profile = tempfile.mkdtemp(prefix="guap-skill-chrome-")
+    port = _free_port()
+    command = shlex.split(binary)
+    command += [
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        BASE_URL,
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.monotonic() + timeout
+    announced = False
+    try:
+        while time.monotonic() < deadline:
+            try:
+                targets = _json_url(f"http://127.0.0.1:{port}/json/list")
+            except Exception:
+                time.sleep(0.5)
+                continue
+            if not announced:
+                print("Выполните вход в открывшемся Chrome. Пароль вводится только вами.")
+                announced = True
+            page = next((item for item in targets if item.get("type") == "page" and item.get("webSocketDebuggerUrl")), None)
+            if page:
+                sock = None
+                try:
+                    sock = _websocket_connect(page["webSocketDebuggerUrl"])
+                    counter = 1
+                    counter, url_result = _cdp_call(sock, counter, "Runtime.evaluate", {"expression": "location.href"})
+                    current_url = url_result.get("result", {}).get("value", "")
+                    counter, cookie_result = _cdp_call(sock, counter, "Network.getAllCookies")
+                    cookies = cookie_result.get("cookies", [])
+                    guap = [item for item in cookies if "guap.ru" in item.get("domain", "")]
+                    if guap and "pro.guap.ru" in current_url and "sso.guap.ru" not in current_url:
+                        return "; ".join(f"{item['name']}={item['value']}" for item in guap)
+                except Exception:
+                    pass
+                finally:
+                    if sock:
+                        sock.close()
+            time.sleep(1)
+        raise RuntimeError("GUAP browser authentication timed out")
+    finally:
+        if not keep_browser:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            shutil.rmtree(profile, ignore_errors=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="guap-pro", description=__doc__)
     pro = parser.add_subparsers(dest="root_command", required=True).add_parser("pro", help="Commands for pro.guap.ru")
     commands = pro.add_subparsers(dest="command", required=True)
-    auth = commands.add_parser("auth", help="Save a browser Cookie header manually")
+    auth = commands.add_parser("auth", help="Open Chrome and capture GUAP cookies")
     auth.add_argument("--cookie-file", type=Path, help="Read the Cookie header from a file")
+    auth.add_argument("--timeout", type=int, default=180)
+    auth.add_argument("--browser-command", help="Chrome/Chromium executable when auto-detection is insufficient")
+    auth.add_argument("--keep-browser", action="store_true")
     commands.add_parser("check")
     tasks = commands.add_parser("tasks")
     tasks.add_argument("--semester", type=int)
@@ -282,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "auth":
-            value = args.cookie_file.read_text(encoding="utf-8") if args.cookie_file else getpass.getpass("Paste Cookie header from pro.guap.ru: ")
+            value = args.cookie_file.read_text(encoding="utf-8") if args.cookie_file else browser_cookie(args.timeout, args.browser_command, args.keep_browser)
             save_cookie(value)
             print(f"Cookie saved to {COOKIE_PATH}")
             return 0
