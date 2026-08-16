@@ -1,99 +1,170 @@
 ---
 name: guap-pro
-description: Use the GUAP cabinet CLI with subject references.
-version: 0.1.0
+description: Read GUAP tasks and authorize through Hermes.
+version: 0.2.0
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
-    tags: [GUAP, CLI, pro.guap.ru, labs, teachers]
+    tags: [GUAP, CLI, Telegram, authentication, labs]
     related_skills: []
     external_skills: [labflow]
 ---
 
-# guap-pro
+# guap-pro Skill
 
-Use the standalone, dependency-free `guap.py` CLI to read the GUAP personal cabinet at
-`pro.guap.ru`, then apply the teacher and subject references in this repository.
-This skill depends on the generic `labflow` skill for task context, coding,
-mathematics, reporting, and self-review. It contains no MCP server.
+Use the dependency-free CLI and optional credential relay to work with the GUAP
+personal cabinet from Hermes and Telegram. This skill adds GUAP teacher and subject
+references on top of the generic `labflow` skill. It contains no MCP server.
 
 ## When to Use
 
-- The user asks for current GUAP tasks, deadlines, materials, profile data, or submission status.
-- A labflow project needs a teacher or subject pattern from `references/`.
-- A report must be checked against GUAP task metadata before submission.
+- The user asks for current GUAP tasks, deadlines, materials, profile data, or status.
+- A `labflow` project needs GUAP teacher, subject, submission, or defense rules.
+- The user needs remote re-authentication because GUAP invalidated the session.
 
-Do not use it for Moodle. Moodle is a separate future project.
+Do not use it for Moodle. Do not use the relay for unrelated websites.
 
 ## Prerequisites
 
-- Python 3.10+ with the standard library only.
-- A GUAP account.
-- `labflow` available as the generic workflow skill.
+- Python 3.10+ with only the standard library.
+- The `labflow` skill available separately.
+- A user-approved HTTPS endpoint for the relay, or a local Chrome/Chromium window.
+- The user must explicitly approve account access in Telegram before Hermes reads
+  cookies, opens the relay, or requests GUAP data.
 
-## CLI
+## Quick Reference
 
-From the repository root, or from the installed skill directory:
+Read-only cabinet commands through the Hermes `terminal` tool:
 
-```bash
-python skills/guap-pro/guap.py pro auth
-python skills/guap-pro/guap.py pro check
-python skills/guap-pro/guap.py pro tasks --format json
-python skills/guap-pro/guap.py pro task <TASK_ID> --format json
-python skills/guap-pro/guap.py pro materials --format json
-python skills/guap-pro/guap.py pro profile --format json
+```text
+terminal(command="python3 skills/guap-pro/guap.py pro check")
+terminal(command="python3 skills/guap-pro/guap.py pro tasks --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro task <TASK_ID> --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro materials --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro profile --format json")
 ```
 
-`pro auth` launches an isolated Chrome/Chromium profile with remote debugging.
-The user completes login in that window; the standard-library CLI reads the
-resulting GUAP cookies through Chrome DevTools Protocol and stores only a session
-cookie file under `~/.config/guap-skill/cookie.txt`. No Python browser package is
-required. If Chrome is unavailable, `--cookie-file` remains a manual fallback.
+Direct local browser authentication:
+
+```text
+terminal(command="python3 skills/guap-pro/guap.py pro auth")
+```
+
+Remote credential relay, only after Telegram approval:
+
+```text
+terminal(
+  command="python3 skills/guap-pro/relay.py --bind 0.0.0.0 --port 8765 --public-url https://<approved-host> --approval-scope 'GUAP read-only access'",
+  background=true,
+  timeout=10
+)
+```
+
+The command prints one JSON line containing a short-lived URL. Send that URL to
+the user in Telegram only after checking that the scope and hostname are correct.
+The endpoint must terminate HTTPS before reaching the relay, or the relay must be
+started with `--certfile` and `--keyfile`.
+
+## Telegram Approval Gate
+
+Before any account operation, ask in Telegram with an explicit scope, for example:
+
+> Разрешить открыть ГУАП и получить текущие задания? Это read-only доступ.
+
+Rules:
+
+1. No clear approval means no browser launch, cookie read, relay start, or GUAP request.
+2. Approval applies only to the named scope and current session.
+3. Ask again before uploading, resubmitting, or changing cabinet state.
+4. Do not treat a reply to an unrelated message as approval.
+5. Never put the password or cookies in Telegram, tool output, logs, reports, or Git.
+
+The CLI cannot cryptographically verify a Telegram reply. The `--approval-scope`
+argument is an explicit operational guard: Hermes supplies it only after receiving
+approval and must keep the scope identical to the confirmation.
+
+## Credential Relay
+
+`relay.py` serves a short-lived custom HTTPS page and forwards the submitted GUAP or
+SSO form through the Hermes host's outbound IP. This is a deliberate credential
+relay: the Hermes process technically sees the password in memory while forwarding
+it. The page warns the user about this before the form is submitted. Do not call it
+end-to-end or password-blind.
+
+The relay:
+
+- generates a random single-use URL token;
+- expires the session after a short TTL;
+- keeps upstream cookies in an isolated in-memory cookie jar;
+- preserves hidden fields, CSRF fields, redirects, and multi-step forms where possible;
+- writes only the resulting Cookie header to `$HERMES_HOME/guap-pro/cookie.txt`;
+- uses mode `0600` for the cookie file;
+- never logs request paths, form bodies, passwords, or cookies;
+- destroys the in-memory jar after completion or expiry;
+- returns `reauth_required` or `relay_failed` instead of retrying blindly.
+
+The relay needs a real HTTPS public URL. A plain `http://` public URL is rejected.
+Prefer an existing HTTPS reverse proxy with access controls. Do not put the relay
+behind an unprotected public hostname. Do not send the relay URL to anyone except
+the Telegram user who approved the scope.
 
 ## Procedure
 
-1. Run `python skills/guap-pro/guap.py pro check`.
-2. If authentication is invalid, ask the user to complete `python skills/guap-pro/guap.py pro auth`.
-3. Retrieve the full task with `python skills/guap-pro/guap.py pro task <ID> --format json`.
-4. Load `references/guap-rules.md`.
-5. Load the matching teacher and subject references.
-6. Copy only current, confirmed requirements into the labflow context.
-7. Run the generic `labflow` workflow.
-8. Before submission, re-check task ID, deadline, extension, and submitted-report status.
+1. Ask for Telegram approval naming `read-only access` or the exact state-changing scope.
+2. If the cookie session may be valid, run `guap.py pro check` through `terminal`.
+3. If the result contains `reauth_required`, ask whether to start the relay.
+4. After approval, start `relay.py` through `terminal(background=true)` and inspect
+   its JSON output without copying cookies into the conversation.
+5. Send only the relay URL to the approving user in Telegram.
+6. Wait for the relay process to report `authenticated`; do not assume success from
+   the user saying that the form was submitted.
+7. Run `guap.py pro check` again, then retrieve the requested data as JSON.
+8. Load `references/guap-rules.md` and the matching teacher and subject references.
+9. Hand the sanitized current task context to `labflow` for the generic workflow.
+10. Before any upload, ask for a separate Telegram confirmation and re-check the task.
 
 ## Source Policy
 
 Use information in this order:
 
-1. Current task details from the CLI.
+1. Current task details from the live CLI.
 2. The current methodology or attached files.
 3. Explicit user-provided notes.
 4. References marked `confirmed`.
 5. References marked `observed` as planning hints only.
 
-Do not turn an old archive pattern into a current requirement without checking the
+Never turn an old archive pattern into a current requirement without checking the
 live task. If sources conflict, preserve the conflict and ask the user.
 
-## GUAP Rules
+## Pitfalls
 
-- A task marked `ожидает проверки` is already submitted; do not redo it by default.
-- A missing deadline is not permission to invent one.
-- A title page is generated only from known context metadata.
-- If the task mentions a defense, prepare the student to explain the method,
-  inputs, intermediate results, and conclusions.
-- Do not upload a report automatically; ask the user to approve it.
-- Do not commit cookies, tokens, private task URLs, or downloaded personal data.
+- GUAP may invalidate sessions after several hours. A persistent browser profile or
+  cookie file cannot defeat a server-side TTL; detect `reauth_required` every time.
+- SSO may use JavaScript, CAPTCHA, hidden fields, or a second-factor step. Stop with
+  `relay_failed` if the form cannot be forwarded reliably.
+- Never retry a login or submission blindly: a relay may have reached GUAP already.
+- Never use the relay for uploads unless the user approved that exact action.
+- Never commit `$HERMES_HOME/guap-pro/cookie.txt` or a browser profile.
+- The relay is not a general reverse proxy. Limit its lifetime, hostname, and scope.
+
+## Verification
+
+Use the Hermes `terminal` tool to run:
+
+```text
+terminal(command="python3 -m unittest discover -s tests -v")
+terminal(command="python3 skills/guap-pro/guap.py --help")
+terminal(command="python3 skills/guap-pro/relay.py --help")
+terminal(command="python3 -m py_compile skills/guap-pro/guap.py skills/guap-pro/relay.py")
+```
+
+A successful workflow has a current authenticated check, a JSON task response, and
+no password, cookie value, or private task URL in the returned Hermes context.
 
 ## References
 
 - `references/guap-rules.md` — source precedence and cabinet rules.
 - `references/teachers/` — teacher-specific patterns and preparation notes.
 - `references/subjects/` — subject-specific patterns.
-
-## Completion
-
-This skill is complete when current cabinet data has been captured in the project
-context, the generic `labflow` workflow has produced the artifacts, and no GUAP
-specific claim relies only on an old archive.

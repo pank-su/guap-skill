@@ -26,8 +26,15 @@ from pathlib import Path
 from typing import Any
 
 BASE_URL = "https://pro.guap.ru"
-COOKIE_PATH = Path.home() / ".config" / "guap-skill" / "cookie.txt"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+
+
+def hermes_home() -> Path:
+    return Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+
+
+def cookie_path() -> Path:
+    return hermes_home() / "guap-pro" / "cookie.txt"
 
 
 @dataclass
@@ -118,8 +125,9 @@ def cookie() -> str:
     value = os.environ.get("GUAP_COOKIE", "").strip()
     if value:
         return value
-    if COOKIE_PATH.exists():
-        return COOKIE_PATH.read_text(encoding="utf-8").strip()
+    path = cookie_path()
+    if path.exists():
+        return path.read_text(encoding="utf-8").strip()
     raise RuntimeError("No GUAP session. Run `python skills/guap-pro/guap.py pro auth` first or set GUAP_COOKIE.")
 
 
@@ -131,7 +139,12 @@ def request(path: str, params: dict[str, Any] | None = None) -> str:
     req = urllib.request.Request(url, headers={"Cookie": cookie(), "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
-            return response.read().decode("utf-8", errors="replace")
+            body = response.read().decode("utf-8", errors="replace")
+            final_url = response.geturl().lower()
+            lowered = body.lower()
+            if "sso.guap.ru" in final_url or "вход в личный кабинет" in lowered:
+                raise RuntimeError("reauth_required: GUAP session has expired")
+            return body
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"GUAP returned HTTP {exc.code} for {path}") from exc
     except urllib.error.URLError as exc:
@@ -261,9 +274,10 @@ def output(data: Any, format_name: str) -> None:
 
 
 def save_cookie(value: str) -> None:
-    COOKIE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    COOKIE_PATH.write_text(value.strip(), encoding="utf-8")
-    COOKIE_PATH.chmod(0o600)
+    path = cookie_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(value.strip(), encoding="utf-8")
+    path.chmod(0o600)
 
 
 def _read_exact(sock: socket.socket, size: int) -> bytes:
@@ -364,10 +378,18 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool) -> str:
-    """Launch an isolated Chrome profile and read GUAP cookies over CDP."""
+def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool, profile_dir: Path | None) -> str:
+    """Launch a persistent Chrome profile and read GUAP cookies over CDP."""
     binary = _browser_binary(browser_command)
-    profile = tempfile.mkdtemp(prefix="guap-skill-chrome-")
+    ephemeral = profile_dir is None
+    profile = Path(tempfile.mkdtemp(prefix="guap-skill-chrome-")) if ephemeral else profile_dir.expanduser()
+    profile.mkdir(parents=True, exist_ok=True)
+    lock_path = profile.parent / f".{profile.name}.lock"
+    try:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise RuntimeError("GUAP browser profile is already in use") from exc
+    os.close(lock_fd)
     port = _free_port()
     command = shlex.split(binary)
     command += [
@@ -417,7 +439,9 @@ def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-            shutil.rmtree(profile, ignore_errors=True)
+            if ephemeral:
+                shutil.rmtree(profile, ignore_errors=True)
+        lock_path.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -429,6 +453,7 @@ def main(argv: list[str] | None = None) -> int:
     auth.add_argument("--timeout", type=int, default=180)
     auth.add_argument("--browser-command", help="Chrome/Chromium executable when auto-detection is insufficient")
     auth.add_argument("--keep-browser", action="store_true")
+    auth.add_argument("--profile-dir", type=Path, default=hermes_home() / "guap-pro" / "chrome-profile")
     commands.add_parser("check")
     tasks = commands.add_parser("tasks")
     tasks.add_argument("--semester", type=int)
@@ -448,9 +473,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "auth":
-            value = args.cookie_file.read_text(encoding="utf-8") if args.cookie_file else browser_cookie(args.timeout, args.browser_command, args.keep_browser)
+            value = args.cookie_file.read_text(encoding="utf-8") if args.cookie_file else browser_cookie(args.timeout, args.browser_command, args.keep_browser, args.profile_dir)
             save_cookie(value)
-            print(f"Cookie saved to {COOKIE_PATH}")
+            print(f"Cookie saved to {cookie_path()}")
             return 0
         if args.command == "check":
             source = request("/inside/profile")
