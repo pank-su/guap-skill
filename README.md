@@ -45,7 +45,19 @@ python3 skills/guap-pro/guap.py pro tasks --format json
 python3 skills/guap-pro/guap.py pro task <TASK_ID> --format json
 python3 skills/guap-pro/guap.py pro materials --format json
 python3 skills/guap-pro/guap.py pro profile --format json
+python3 skills/guap-pro/guap.py pro subjects --format json
+python3 skills/guap-pro/guap.py pro subject <SUBJECT_ID> --format json
+python3 skills/guap-pro/guap.py pro marks --format json
+python3 skills/guap-pro/guap.py pro schedule --date YYYY-MM-DD --format json
+python3 skills/guap-pro/guap.py pro reports --format json
+python3 skills/guap-pro/guap.py pro notices --format json
+python3 skills/guap-pro/guap.py pro professors --format json
 ```
+
+The added read-only methods cover disciplines, subject details, grades,
+schedule, submitted reports, announcements, and teacher search. Filters are
+available for semester, subject, status, text search, teacher, group, building,
+room, and pagination where the cabinet exposes them.
 
 Local interactive authentication opens persistent Chrome/Chromium state under
 `$HERMES_HOME/guap-pro/chrome-profile/`:

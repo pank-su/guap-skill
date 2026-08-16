@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime as dt
 import hashlib
 import html
 import json
@@ -262,6 +263,128 @@ def parse_profile(source: str) -> dict[str, str]:
     return result
 
 
+def _row_cells(row: Node) -> list[Node]:
+    return [child for child in row.children if isinstance(child, Node) and child.tag in {"th", "td"}]
+
+
+def _key(value: str) -> str:
+    mapping = {
+        "№": "number",
+        "Дисциплина": "discipline",
+        "Название": "name",
+        "Задание": "task",
+        "Статус": "status",
+        "Оценка": "mark",
+        "Преподаватель": "teacher",
+        "Тип": "type",
+        "Баллы": "points",
+        "Предельная дата": "deadline",
+        "Дата загрузки": "uploaded_at",
+        "Пара": "lesson",
+        "Время": "time",
+        "Аудитория": "room",
+        "Корпус": "building",
+    }
+    return mapping.get(compact(value), compact(value).lower().replace(" ", "_"))
+
+
+def parse_table_records(source: str, table_index: int = 0) -> list[dict[str, str]]:
+    root = Parser().feed(source)
+    tables = root.descendants("table")
+    if table_index >= len(tables):
+        return []
+    rows = tables[table_index].descendants("tr")
+    if not rows:
+        return []
+    headers = _row_cells(rows[0])
+    if not any(cell.tag == "th" for cell in headers):
+        return []
+    keys = [_key(cell.text()) for cell in headers]
+    records: list[dict[str, str]] = []
+    for row in rows[1:]:
+        cells = _row_cells(row)
+        if not cells:
+            continue
+        values = [cell.text() for cell in cells]
+        records.append({key: values[index] if index < len(values) else "" for index, key in enumerate(keys)})
+    return records
+
+
+def parse_subjects(source: str) -> list[dict[str, Any]]:
+    root = Parser().feed(source)
+    result: list[dict[str, Any]] = []
+    prefix = "/inside/students/subjects/"
+    for card in root.descendants("div"):
+        if "card" not in card.attrs.get("class", "").split():
+            continue
+        link = next((a for a in card.descendants("a") if prefix in a.attrs.get("href", "") and href_id(a.attrs["href"], prefix) is not None), None)
+        if link is None:
+            continue
+        teachers = []
+        for teacher in card.descendants("a"):
+            teacher_id = href_id(teacher.attrs.get("href", ""), "/inside/profile/")
+            if teacher_id is not None:
+                teachers.append({"id": teacher_id, "name": teacher.text()})
+        small = card.first("small")
+        spans = [span.text() for span in card.descendants("span") if span.text()]
+        result.append({
+            "id": href_id(link.attrs["href"], prefix),
+            "name": link.text(),
+            "type": small.text() if small else "",
+            "academic_year": spans[0] if spans else "",
+            "term": spans[1] if len(spans) > 1 else "",
+            "teachers": teachers,
+        })
+    return result
+
+
+def parse_subject_detail(source: str, subject_id: int) -> dict[str, Any]:
+    root = Parser().feed(source)
+    title = root.first("h3")
+    return {"id": subject_id, "name": title.text() if title else "", "tasks": parse_table_records(source)}
+
+
+def parse_schedule(source: str, date: str) -> dict[str, Any]:
+    return {"date": date, "lessons": parse_table_records(source)}
+
+
+def parse_reports(source: str) -> list[dict[str, str]]:
+    return parse_table_records(source)
+
+
+def parse_marks(source: str) -> list[dict[str, str]]:
+    return parse_table_records(source)
+
+
+def parse_notices(source: str) -> list[dict[str, str]]:
+    root = Parser().feed(source)
+    result: list[dict[str, str]] = []
+    for card in root.descendants("div"):
+        if "card" not in card.attrs.get("class", "").split():
+            continue
+        title_node = next((card.first(tag) for tag in ("h5", "h4", "h3") if card.first(tag)), None)
+        header = card.first("div", **{"class": "card-header"})
+        paragraphs = [node.text() for node in card.descendants("p") if node.text()]
+        if title_node is None and not paragraphs:
+            continue
+        result.append({
+            "title": title_node.text() if title_node else "",
+            "type": header.text() if header else "",
+            "body": " ".join(paragraphs),
+        })
+    return result
+
+
+def parse_professors(source: str) -> list[dict[str, Any]]:
+    root = Parser().feed(source)
+    unique: dict[int, dict[str, Any]] = {}
+    for link in root.descendants("a"):
+        professor_id = href_id(link.attrs.get("href", ""), "/inside/profile/")
+        if professor_id is not None and link.text():
+            unique.setdefault(professor_id, {"id": professor_id, "name": link.text()})
+    return list(unique.values())
+
+
 def output(data: Any, format_name: str) -> None:
     if format_name == "json":
         print(json.dumps(data, ensure_ascii=False, indent=2))
@@ -271,6 +394,10 @@ def output(data: Any, format_name: str) -> None:
     else:
         for key, value in data.items():
             print(f"{key}: {value}")
+
+
+def query_params(**values: Any) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None and value != ""}
 
 
 def save_cookie(value: str) -> None:
@@ -460,6 +587,11 @@ def main(argv: list[str] | None = None) -> int:
     tasks.add_argument("--subject", type=int)
     tasks.add_argument("--type", type=int)
     tasks.add_argument("--status", type=int)
+    tasks.add_argument("--search")
+    tasks.add_argument("--per-page", type=int)
+    tasks.add_argument("--page", type=int)
+    tasks.add_argument("--sort")
+    tasks.add_argument("--direction", choices=("asc", "desc"))
     tasks.add_argument("--format", choices=("table", "json"), default="table")
     task = commands.add_parser("task")
     task.add_argument("id", type=int)
@@ -467,9 +599,49 @@ def main(argv: list[str] | None = None) -> int:
     materials = commands.add_parser("materials")
     materials.add_argument("--semester", type=int)
     materials.add_argument("--subject", type=int)
+    materials.add_argument("--text")
+    materials.add_argument("--per-page", type=int)
     materials.add_argument("--format", choices=("table", "json"), default="table")
     profile = commands.add_parser("profile")
     profile.add_argument("--format", choices=("table", "json"), default="table")
+    subjects = commands.add_parser("subjects")
+    subjects.add_argument("--format", choices=("table", "json"), default="table")
+    subject = commands.add_parser("subject")
+    subject.add_argument("id", type=int)
+    subject.add_argument("--format", choices=("table", "json"), default="json")
+    marks = commands.add_parser("marks")
+    marks.add_argument("--semester", type=int)
+    marks.add_argument("--type", type=int)
+    marks.add_argument("--teacher", type=int)
+    marks.add_argument("--mark", type=int)
+    marks.add_argument("--format", choices=("table", "json"), default="table")
+    schedule = commands.add_parser("schedule")
+    schedule.add_argument("--date", default=dt.date.today().isoformat())
+    schedule.add_argument("--group", type=int)
+    schedule.add_argument("--teacher", type=int)
+    schedule.add_argument("--building", type=int)
+    schedule.add_argument("--room", type=int)
+    schedule.add_argument("--format", choices=("table", "json"), default="json")
+    reports = commands.add_parser("reports")
+    reports.add_argument("--semester", type=int)
+    reports.add_argument("--subject", type=int)
+    reports.add_argument("--status", type=int)
+    reports.add_argument("--text")
+    reports.add_argument("--per-page", type=int)
+    reports.add_argument("--format", choices=("table", "json"), default="table")
+    notices = commands.add_parser("notices")
+    notices.add_argument("--subject", type=int)
+    notices.add_argument("--type")
+    notices.add_argument("--search", dest="text")
+    notices.add_argument("--per-page", type=int)
+    notices.add_argument("--format", choices=("table", "json"), default="table")
+    professors = commands.add_parser("professors")
+    professors.add_argument("--search", dest="fullname")
+    professors.add_argument("--position", type=int)
+    professors.add_argument("--faculty", type=int)
+    professors.add_argument("--subunit", type=int)
+    professors.add_argument("--per-page", type=int)
+    professors.add_argument("--format", choices=("table", "json"), default="table")
     args = parser.parse_args(argv)
     try:
         if args.command == "auth":
@@ -483,16 +655,54 @@ def main(argv: list[str] | None = None) -> int:
             print("Authentication valid" if valid else "Authentication invalid")
             return 0 if valid else 1
         if args.command == "tasks":
-            output(parse_tasks(request("/inside/student/tasks/", {"semester": args.semester, "subject": args.subject, "type": args.type, "showStatus": args.status})), args.format)
+            output(parse_tasks(request("/inside/student/tasks/", query_params(
+                semester=args.semester, subject=args.subject, type=args.type, showStatus=args.status,
+                text=args.search, perPage=args.per_page, page=args.page, sort=args.sort, direction=args.direction,
+            ))), args.format)
             return 0
         if args.command == "task":
             output(parse_task(request(f"/inside/student/tasks/{args.id}"), args.id), args.format)
             return 0
         if args.command == "materials":
-            output(parse_materials(request("/inside/student/materials", {"semester": args.semester, "subject": args.subject})), args.format)
+            output(parse_materials(request("/inside/student/materials", query_params(
+                semester=args.semester, subject=args.subject, text=args.text, perPage=args.per_page,
+            ))), args.format)
             return 0
         if args.command == "profile":
             output(parse_profile(request("/inside/profile")), args.format)
+            return 0
+        if args.command == "subjects":
+            output(parse_subjects(request("/inside/students/subjects", {})), args.format)
+            return 0
+        if args.command == "subject":
+            output(parse_subject_detail(request(f"/inside/students/subjects/{args.id}"), args.id), args.format)
+            return 0
+        if args.command == "marks":
+            output(parse_marks(request("/inside/student/marks", query_params(
+                semester=args.semester, type=args.type, teacher=args.teacher, mark=args.mark,
+            ))), args.format)
+            return 0
+        if args.command == "schedule":
+            dt.date.fromisoformat(args.date)
+            output(parse_schedule(request(f"/inside/students/classes/schedule/day/{args.date}", query_params(
+                group=args.group, teacher=args.teacher, building=args.building, room=args.room,
+            )), args.date), args.format)
+            return 0
+        if args.command == "reports":
+            output(parse_reports(request("/inside/student/reports", query_params(
+                semester=args.semester, subject=args.subject, status=args.status, text=args.text, perPage=args.per_page,
+            ))), args.format)
+            return 0
+        if args.command == "notices":
+            output(parse_notices(request("/inside/student/notice", query_params(
+                subject=args.subject, type=args.type, text=args.text, perPage=args.per_page,
+            ))), args.format)
+            return 0
+        if args.command == "professors":
+            output(parse_professors(request("/inside/student/professors", query_params(
+                fullname=args.fullname, position=args.position, facultyWithChairs=args.faculty,
+                subunit=args.subunit, perPage=args.per_page,
+            ))), args.format)
             return 0
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)

@@ -1,7 +1,7 @@
 ---
 name: guap-pro
 description: Read GUAP tasks and authorize through Hermes.
-version: 0.2.0
+version: 0.3.0
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -44,6 +44,13 @@ terminal(command="python3 skills/guap-pro/guap.py pro tasks --format json")
 terminal(command="python3 skills/guap-pro/guap.py pro task <TASK_ID> --format json")
 terminal(command="python3 skills/guap-pro/guap.py pro materials --format json")
 terminal(command="python3 skills/guap-pro/guap.py pro profile --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro subjects --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro subject <SUBJECT_ID> --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro marks --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro schedule --date YYYY-MM-DD --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro reports --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro notices --format json")
+terminal(command="python3 skills/guap-pro/guap.py pro professors --format json")
 ```
 
 Direct local browser authentication:
@@ -121,9 +128,11 @@ the Telegram user who approved the scope.
 6. Wait for the relay process to report `authenticated`; do not assume success from
    the user saying that the form was submitted.
 7. Run `guap.py pro check` again, then retrieve the requested data as JSON.
-8. Load `references/guap-rules.md` and the matching teacher and subject references.
-9. Hand the sanitized current task context to `labflow` for the generic workflow.
-10. Before any upload, ask for a separate Telegram confirmation and re-check the task.
+8. For lab work, load `subjects`, `subject`, `tasks`, `reports`, `materials`, and
+   matching teacher/subject references together; do not infer status from one page.
+9. For planning, use `schedule`, `marks`, and `notices` as separate current sources.
+10. Hand the sanitized current task context to `labflow` for the generic workflow.
+11. Before any upload, ask for a separate Telegram confirmation and re-check the task.
 
 ## Source Policy
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -51,6 +52,61 @@ class ParserTests(unittest.TestCase):
         profile = module.parse_profile("<h3 class='text-center'>Student</h3><h5>Группа: <span>M412</span></h5>")
         self.assertEqual(profile["full_name"], "Student")
         self.assertEqual(profile["Группа"], "M412")
+
+    def test_subjects_from_cards(self) -> None:
+        html = """
+        <div class='card shadow-sm mb-2'><div class='card-body'>
+          <div class='float-end'><small>Экзамен</small><span>2026</span><span>осенний</span></div>
+          <h5><a href='/inside/students/subjects/42'>Механика</a></h5>
+          <p>Преподаватели: <a href='/inside/profile/7'>Иванов И.И.</a></p>
+        </div></div>
+        """
+        result = module.parse_subjects(html)
+        self.assertEqual(result[0]["id"], 42)
+        self.assertEqual(result[0]["name"], "Механика")
+        self.assertEqual(result[0]["type"], "Экзамен")
+        self.assertEqual(result[0]["teachers"][0]["name"], "Иванов И.И.")
+
+    def test_generic_table_records_map_headers(self) -> None:
+        html = """
+        <table><tr><th>Дисциплина</th><th>Оценка</th><th>Преподаватель</th></tr>
+        <tr><td>Математика</td><td>5</td><td>Иванов И.И.</td></tr></table>
+        """
+        result = module.parse_table_records(html)
+        self.assertEqual(result, [{"discipline": "Математика", "mark": "5", "teacher": "Иванов И.И."}])
+
+    def test_schedule_records_preserve_date_and_rows(self) -> None:
+        html = """
+        <h3>Расписание занятий</h3>
+        <table><tr><th>Пара</th><th>Время</th><th>Дисциплина</th></tr>
+        <tr><td>1</td><td>09:00</td><td>Механика</td></tr></table>
+        """
+        result = module.parse_schedule(html, "2026-08-16")
+        self.assertEqual(result["date"], "2026-08-16")
+        self.assertEqual(result["lessons"][0]["discipline"], "Механика")
+
+    def test_reports_and_notices_are_read_only_records(self) -> None:
+        reports = module.parse_reports(
+            "<table><tr><th>№</th><th>Задание</th><th>Статус</th></tr>"
+            "<tr><td>1</td><td>Лабораторная</td><td>принят</td></tr></table>"
+        )
+        self.assertEqual(reports[0]["status"], "принят")
+        notices = module.parse_notices(
+            "<div class='card'><div class='card-header'>Важное</div>"
+            "<div class='card-body'><h5>Срок сдачи</h5><p>До пятницы</p></div></div>"
+        )
+        self.assertEqual(notices[0]["title"], "Срок сдачи")
+
+    def test_subjects_command_uses_read_only_endpoint(self) -> None:
+        with patch.object(module, "request", return_value="<div class='card'><h5><a href='/inside/students/subjects/42'>Механика</a></h5></div>") as request, patch.object(module, "output") as output:
+            self.assertEqual(module.main(["pro", "subjects", "--format", "json"]), 0)
+            request.assert_called_once_with("/inside/students/subjects", {})
+            output.assert_called_once()
+
+    def test_schedule_command_passes_date_and_filters(self) -> None:
+        with patch.object(module, "request", return_value="<table><tr><th>Пара</th></tr></table>") as request, patch.object(module, "output"):
+            self.assertEqual(module.main(["pro", "schedule", "--date", "2026-08-16", "--group", "215"]), 0)
+            request.assert_called_once_with("/inside/students/classes/schedule/day/2026-08-16", {"group": 215})
 
 
 if __name__ == "__main__":
