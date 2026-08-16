@@ -61,14 +61,15 @@ class RelayTests(unittest.TestCase):
         captured: list[bytes] = []
 
         def fake_request(url: str, data: bytes | None = None):
-            assert data is not None
-            captured.append(data)
             session.jar.set_cookie(http.cookiejar.Cookie(
                 version=0, name="session", value="ok", port=None, port_specified=False,
                 domain="pro.guap.ru", domain_specified=True, domain_initial_dot=False,
                 path="/", path_specified=True, secure=True, expires=None, discard=True,
                 comment=None, comment_url=None, rest={}, rfc2109=False,
             ))
+            if data is None:
+                return "https://pro.guap.ru/inside/profile", "<html>profile</html>"
+            captured.append(data)
             return "https://pro.guap.ru/inside/profile", "<html>profile</html>"
 
         session._request = fake_request  # type: ignore[method-assign]
@@ -78,6 +79,16 @@ class RelayTests(unittest.TestCase):
         self.assertNotIn("secret", relay.json.dumps({"status": session.state}))
         self.assertIn(b"username=vasya", captured[0])
         self.assertIn(b"password=secret", captured[0])
+
+    def test_empty_password_cannot_complete_relay(self) -> None:
+        session = relay.RelaySession("test-token")
+        session.form = relay.LoginForm(
+            action="https://sso.guap.ru/login",
+            method="POST",
+            fields=[relay.FormField("password", "", "password", "Пароль", True)],
+        )
+        with self.assertRaisesRegex(relay.RelayError, "credentials_required"):
+            session.submit({"password": [""]})
 
     def test_cookie_path_uses_hermes_home_and_mode(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

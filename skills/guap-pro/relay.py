@@ -170,8 +170,11 @@ class RelaySession:
             url, body = self._request(self.current_url)
             self.current_url = url
             if not response_is_login(url, body) and "form" not in body.lower():
-                self.state = "authenticated"
-                return LoginForm(action=url, method="GET", title="Сессия уже авторизована")
+                if self._session_is_authenticated():
+                    self.state = "authenticated"
+                    return LoginForm(action=url, method="GET", title="Сессия уже авторизована")
+                self.state = "failed"
+                raise RelayError("reauth_required: GUAP did not expose an authenticated session")
             form = self._extract_form(url, body)
             if form is None:
                 self.state = "failed"
@@ -188,6 +191,9 @@ class RelaySession:
             if self.form is None:
                 self.load()
             assert self.form is not None
+            password_fields = [field.name for field in self.form.fields if field.kind == "password"]
+            if password_fields and not any(values.get(name, [""])[-1].strip() for name in password_fields):
+                raise RelayError("credentials_required: password field is empty")
             allowed = {field.name for field in self.form.fields}
             payload: list[tuple[str, str]] = []
             for field in self.form.fields:
@@ -210,9 +216,16 @@ class RelaySession:
                 self.form = next_form
                 self.state = "awaiting_second_factor"
                 return "additional_step"
+            if not self._session_is_authenticated():
+                self.state = "failed"
+                raise RelayError("reauth_required: GUAP did not confirm the session")
             self.state = "authenticated"
             self.form = None
             return "authenticated"
+
+    def _session_is_authenticated(self) -> bool:
+        url, body = self._request(BASE_URL + "/inside/profile")
+        return not response_is_login(url, body) and "sso.guap.ru" not in url.lower()
 
     def cookie_header(self) -> str:
         return "; ".join(f"{item.name}={item.value}" for item in self.jar)
