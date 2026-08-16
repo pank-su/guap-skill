@@ -90,11 +90,7 @@ skills/guap-pro/
 ├── references/
 │   ├── teachers/
 │   └── subjects/
-└── assets/
-    └── banner-prompt.md
 ```
-
-Промпт для генерации баннера: [`assets/banner-prompt.md`](assets/banner-prompt.md).
 
 ## Лицензия
 
