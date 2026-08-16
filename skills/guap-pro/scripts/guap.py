@@ -130,7 +130,7 @@ def cookie() -> str:
     path = cookie_path()
     if path.exists():
         return path.read_text(encoding="utf-8").strip()
-    raise RuntimeError("No GUAP session. Run `python skills/guap-pro/guap.py pro auth` first or set GUAP_COOKIE.")
+    raise RuntimeError("No GUAP session. Run `python skills/guap-pro/scripts/guap.py pro auth` first or set GUAP_COOKIE.")
 
 
 def request(path: str, params: dict[str, Any] | None = None) -> str:

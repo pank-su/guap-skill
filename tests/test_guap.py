@@ -7,7 +7,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "skills/guap-pro/guap.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "skills/guap-pro/scripts/guap.py"
 spec = importlib.util.spec_from_file_location("guap_cli", SCRIPT)
 assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)

@@ -38,32 +38,36 @@ Do not use it for Moodle. Do not use the relay for unrelated websites.
 
 Read-only cabinet commands through the Hermes `terminal` tool:
 
+The examples below use a repository checkout. After installation, resolve the
+directory containing this `SKILL.md` as `<skill-root>` and run the same commands
+from that directory using `scripts/guap.py`.
+
 ```text
-terminal(command="python3 skills/guap-pro/guap.py pro check")
-terminal(command="python3 skills/guap-pro/guap.py pro tasks --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro task <TASK_ID> --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro materials --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro profile --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro subjects --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro subject <SUBJECT_ID> --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro marks --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro schedule --date YYYY-MM-DD --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro reports --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro notices --format json")
-terminal(command="python3 skills/guap-pro/guap.py pro professors --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro check")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro tasks --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro task <TASK_ID> --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro materials --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro profile --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro subjects --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro subject <SUBJECT_ID> --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro marks --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro schedule --date YYYY-MM-DD --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro reports --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro notices --format json")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro professors --format json")
 ```
 
 Direct local browser authentication:
 
 ```text
-terminal(command="python3 skills/guap-pro/guap.py pro auth")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro auth")
 ```
 
 Remote credential relay, only after Telegram approval:
 
 ```text
 terminal(
-  command="python3 skills/guap-pro/relay.py --bind 0.0.0.0 --port 8765 --public-url https://<approved-host> --approval-scope 'GUAP read-only access'",
+  command="python3 skills/guap-pro/scripts/relay.py --bind 0.0.0.0 --port 8765 --public-url https://<approved-host> --approval-scope 'GUAP read-only access'",
   background=true,
   timeout=10
 )
@@ -164,9 +168,9 @@ Use the Hermes `terminal` tool to run:
 
 ```text
 terminal(command="python3 -m unittest discover -s tests -v")
-terminal(command="python3 skills/guap-pro/guap.py --help")
-terminal(command="python3 skills/guap-pro/relay.py --help")
-terminal(command="python3 -m py_compile skills/guap-pro/guap.py skills/guap-pro/relay.py")
+terminal(command="python3 skills/guap-pro/scripts/guap.py --help")
+terminal(command="python3 skills/guap-pro/scripts/relay.py --help")
+terminal(command="python3 -m py_compile skills/guap-pro/scripts/guap.py skills/guap-pro/scripts/relay.py")
 ```
 
 A successful workflow has a current authenticated check, a JSON task response, and

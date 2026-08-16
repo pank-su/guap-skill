@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills/guap-pro/guap.py"
-RELAY = ROOT / "skills/guap-pro/relay.py"
+SCRIPT = ROOT / "skills/guap-pro/scripts/guap.py"
+RELAY = ROOT / "skills/guap-pro/scripts/relay.py"
 
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)

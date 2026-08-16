@@ -8,11 +8,14 @@ installation or a build.
 
 ```text
 skills/guap-pro/SKILL.md
-skills/guap-pro/guap.py       # read-only cabinet CLI
-skills/guap-pro/relay.py      # optional short-lived login relay
+skills/guap-pro/scripts/guap.py       # read-only cabinet CLI
+skills/guap-pro/scripts/relay.py      # optional short-lived login relay
 skills/guap-pro/references/
 tests/
 ```
+
+Installation for Hermes, Claude Code, Codex CLI, and OpenCode is documented in
+[`INSTALL.md`](INSTALL.md).
 
 The skill depends on the generic [`labflow`](https://github.com/pank-su/labflow)
 skill. It adds GUAP-specific rules, teacher patterns, subject patterns, and a
@@ -40,18 +43,18 @@ Use it only behind HTTPS and only after Telegram approval.
 Read-only commands use the Python standard library:
 
 ```bash
-python3 skills/guap-pro/guap.py pro check
-python3 skills/guap-pro/guap.py pro tasks --format json
-python3 skills/guap-pro/guap.py pro task <TASK_ID> --format json
-python3 skills/guap-pro/guap.py pro materials --format json
-python3 skills/guap-pro/guap.py pro profile --format json
-python3 skills/guap-pro/guap.py pro subjects --format json
-python3 skills/guap-pro/guap.py pro subject <SUBJECT_ID> --format json
-python3 skills/guap-pro/guap.py pro marks --format json
-python3 skills/guap-pro/guap.py pro schedule --date YYYY-MM-DD --format json
-python3 skills/guap-pro/guap.py pro reports --format json
-python3 skills/guap-pro/guap.py pro notices --format json
-python3 skills/guap-pro/guap.py pro professors --format json
+python3 skills/guap-pro/scripts/guap.py pro check
+python3 skills/guap-pro/scripts/guap.py pro tasks --format json
+python3 skills/guap-pro/scripts/guap.py pro task <TASK_ID> --format json
+python3 skills/guap-pro/scripts/guap.py pro materials --format json
+python3 skills/guap-pro/scripts/guap.py pro profile --format json
+python3 skills/guap-pro/scripts/guap.py pro subjects --format json
+python3 skills/guap-pro/scripts/guap.py pro subject <SUBJECT_ID> --format json
+python3 skills/guap-pro/scripts/guap.py pro marks --format json
+python3 skills/guap-pro/scripts/guap.py pro schedule --date YYYY-MM-DD --format json
+python3 skills/guap-pro/scripts/guap.py pro reports --format json
+python3 skills/guap-pro/scripts/guap.py pro notices --format json
+python3 skills/guap-pro/scripts/guap.py pro professors --format json
 ```
 
 The added read-only methods cover disciplines, subject details, grades,
@@ -63,13 +66,13 @@ Local interactive authentication opens persistent Chrome/Chromium state under
 `$HERMES_HOME/guap-pro/chrome-profile/`:
 
 ```bash
-python3 skills/guap-pro/guap.py pro auth
+python3 skills/guap-pro/scripts/guap.py pro auth
 ```
 
 Remote relay, after explicit user approval:
 
 ```bash
-python3 skills/guap-pro/relay.py \
+python3 skills/guap-pro/scripts/relay.py \
   --bind 0.0.0.0 \
   --port 8765 \
   --public-url https://login.example.com \
