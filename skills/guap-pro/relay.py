@@ -267,7 +267,12 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except BrokenPipeError:
+            # Mobile browsers may close the tab immediately after submitting.
+            # Authentication has already been verified before this response.
+            pass
 
     def _token(self) -> str | None:
         parts = urllib.parse.urlsplit(self.path).path.strip("/").split("/")
