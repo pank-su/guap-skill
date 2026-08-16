@@ -97,6 +97,23 @@ class ParserTests(unittest.TestCase):
         )
         self.assertEqual(notices[0]["title"], "Срок сдачи")
 
+    def test_marks_from_grade_cards(self) -> None:
+        html = """
+        <div class='card shadow-sm mb-2'><div class='card-body'>
+          <h5><a href='/inside/students/subjects/42'>Механика</a></h5>
+          <div><div><span>5 семестр</span></div></div>
+          <div><label>Тип контроля:</label><span>Экзамен</span></div>
+          <div><label>Оценка:</label><span>отлично</span></div>
+          <div><label>Преподаватель:</label><span>Иванов И.И.</span></div>
+          <div><label>Дата сдачи экзамена/зачета:</label><span>03.10.2024</span></div>
+          <div><label>З.Е.:</label><span>4</span></div>
+        </div></div>
+        """
+        result = module.parse_marks(html)
+        self.assertEqual(result[0]["subject"], "Механика")
+        self.assertEqual(result[0]["mark"], "отлично")
+        self.assertEqual(result[0]["semester"], 5)
+
     def test_subjects_command_uses_read_only_endpoint(self) -> None:
         with patch.object(module, "request", return_value="<div class='card'><h5><a href='/inside/students/subjects/42'>Механика</a></h5></div>") as request, patch.object(module, "output") as output:
             self.assertEqual(module.main(["pro", "subjects", "--format", "json"]), 0)

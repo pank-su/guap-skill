@@ -10,6 +10,7 @@ import hashlib
 import html
 import json
 import os
+import re
 import secrets
 import shlex
 import shutil
@@ -352,8 +353,37 @@ def parse_reports(source: str) -> list[dict[str, str]]:
     return parse_table_records(source)
 
 
-def parse_marks(source: str) -> list[dict[str, str]]:
-    return parse_table_records(source)
+def parse_marks(source: str) -> list[dict[str, Any]]:
+    table_records = parse_table_records(source)
+    if table_records:
+        return table_records
+    root = Parser().feed(source)
+    result: list[dict[str, Any]] = []
+    prefix = "/inside/students/subjects/"
+    for card in root.descendants("div"):
+        if "card" not in card.attrs.get("class", "").split():
+            continue
+        subject = next((a for a in card.descendants("a") if prefix in a.attrs.get("href", "") and href_id(a.attrs["href"], prefix) is not None), None)
+        if subject is None:
+            continue
+        values: dict[str, str] = {}
+        for block in card.descendants("div"):
+            labels = [child for child in block.children if isinstance(child, Node) and child.tag == "label"]
+            spans = [child for child in block.children if isinstance(child, Node) and child.tag == "span"]
+            if labels and spans:
+                values[compact(labels[0].text()).rstrip(":")] = compact(spans[0].text())
+        semester_match = re.search(r"(\d+)\s+семестр", card.text())
+        result.append({
+            "subject": subject.text(),
+            "subject_id": href_id(subject.attrs["href"], prefix),
+            "semester": int(semester_match.group(1)) if semester_match else None,
+            "control_type": values.get("Тип контроля", ""),
+            "mark": values.get("Оценка", ""),
+            "teacher": values.get("Преподаватель", ""),
+            "exam_date": values.get("Дата сдачи экзамена/зачета", ""),
+            "credits": values.get("З.Е.", ""),
+        })
+    return result
 
 
 def parse_notices(source: str) -> list[dict[str, str]]:
