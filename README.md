@@ -42,8 +42,18 @@ npx skills add pank-su/guap-skill --skill guap-pro --copy
 Установщик покажет доступные harness’ы. Выбери нужный инструмент и подтверди
 установку через `yes`.
 
-Подробная инструкция для разных режимов установки находится в
-[`INSTALL.md`](INSTALL.md).
+Для установки глобально добавь `--global`:
+
+```bash
+npx skills add pank-su/guap-skill --skill guap-pro --global --copy
+```
+
+Для обновления или удаления используй:
+
+```bash
+npx skills update guap-pro
+npx skills remove guap-pro
+```
 
 ## Авторизация
 
