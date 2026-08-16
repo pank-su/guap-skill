@@ -101,7 +101,7 @@ class RelaySession:
         self.expires_at = time.time() + ttl
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
-        self.current_url = BASE_URL + "/"
+        self.current_url = BASE_URL + "/inside/profile"
         self.form: LoginForm | None = None
         self.state = "created"
         self.error = ""
@@ -304,6 +304,7 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
         except RelayError as exc:
             state.session.error = str(exc)
             state.session.state = "failed"
+            state.done.set()
             self._send(502, self._page("Не удалось открыть вход", escape(str(exc))))
 
     def do_POST(self) -> None:  # noqa: N802
@@ -331,6 +332,7 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
         except RelayError as exc:
             state.session.error = str(exc)
             state.session.state = "failed"
+            state.done.set()
             self._send(502, self._page("Авторизация не завершена", "Сессия ГУАП не подтверждена. Вернитесь в Telegram."))
 
     @staticmethod
