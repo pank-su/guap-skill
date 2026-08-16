@@ -6,17 +6,15 @@ No Python package installation or build is required.
 
 ## Claude Code, Codex CLI, and OpenCode
 
-Install globally for the current user with the shared `npx skills` installer:
+Install globally for the current user with the shared `npx skills` installer.
+Run it without `--agent` or `--yes`: the installer will show the detected
+harnesses, let the user choose the targets, and ask for confirmation:
 
 ```bash
 npx skills add pank-su/guap-skill \
   --skill guap-pro \
   --global \
-  --copy \
-  --agent claude-code \
-  --agent codex \
-  --agent opencode \
-  --yes
+  --copy
 ```
 
 Install into the current project instead:
@@ -24,11 +22,7 @@ Install into the current project instead:
 ```bash
 npx skills add pank-su/guap-skill \
   --skill guap-pro \
-  --copy \
-  --agent claude-code \
-  --agent codex \
-  --agent opencode \
-  --yes
+  --copy
 ```
 
 Project installation is committed with the project. The installer writes the
