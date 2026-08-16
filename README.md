@@ -1,97 +1,86 @@
-# guap-skill
+# guap-pro
 
-Standalone GUAP Agent Skill and dependency-free Python tools for Hermes. This
-repository does **not** contain an MCP server and does not require package
-installation or a build.
+**Гуаповский Agent Skill для Hermes, Claude Code, Codex CLI и OpenCode.**
 
-## Contents
+`guap-pro` даёт агенту доступ к данным личного кабинета ГУАП и помогает использовать
+их вместе с общим workflow [`labflow`](https://github.com/pank-su/labflow).
 
-```text
-skills/guap-pro/SKILL.md
-skills/guap-pro/scripts/guap.py       # read-only cabinet CLI
-skills/guap-pro/scripts/relay.py      # optional short-lived login relay
-skills/guap-pro/references/
-tests/
+## Возможности
+
+- задания, дедлайны и статусы отчётов;
+- дисциплины и карточки предметов;
+- оценки и зачётная книжка;
+- расписание;
+- объявления;
+- преподаватели и связанные references;
+- материалы и отчёты;
+- правила подготовки к защите по преподавателям и дисциплинам.
+
+Скрипты используют только стандартную библиотеку Python. Установка пакетов и сборка
+не нужны. MCP-сервера в репозитории нет.
+
+## Установка
+
+Для Claude Code, Codex CLI и OpenCode запусти команду из каталога проекта или с
+`--global` для установки пользователю:
+
+```bash
+npx skills add pank-su/guap-skill --skill guap-pro --copy
 ```
 
-Installation for Hermes, Claude Code, Codex CLI, and OpenCode is documented in
+Установщик покажет доступные harness’ы. Выбери нужный инструмент и подтверди
+установку через `yes`.
+
+Для Hermes:
+
+```bash
+hermes skills install https://raw.githubusercontent.com/pank-su/guap-skill/main/skills/guap-pro/SKILL.md --name guap-pro
+```
+
+Подробная инструкция для разных режимов установки находится в
 [`INSTALL.md`](INSTALL.md).
 
-The skill depends on the generic [`labflow`](https://github.com/pank-su/labflow)
-skill. It adds GUAP-specific rules, teacher patterns, subject patterns, and a
-read-only CLI for `pro.guap.ru`.
+## Авторизация
 
-## Hermes and Telegram
+В Telegram Hermes сначала спрашивает разрешение на использование аккаунта ГУАП.
+Для удалённого входа используется временная HTTPS-страница в
+`scripts/relay.py`. Пользователь вводит пароль сам; relay не сохраняет пароль и
+не отправляет его в Telegram. Сессионные cookies хранятся в Hermes home с правами
+`0600`.
 
-Before using an account session, Hermes must ask the user for explicit approval in
-Telegram. Before uploads or other state changes, it must ask again for that exact
-action.
-
-The optional `relay.py` provides a short-lived custom HTTPS login page for cases
-where the user is remote and GUAP keeps invalidating the session. The user opens
-the page from a phone and enters credentials there. The form is forwarded through
-the Hermes host's outbound IP. This is a credential relay, not end-to-end
-forwarding: the Hermes process can technically see the password in memory while
-forwarding it. The page discloses this before submission.
-
-The relay never writes passwords or form bodies to logs/files and stores only the
-resulting session Cookie header with mode `0600` under `$HERMES_HOME/guap-pro/`.
-Use it only behind HTTPS and only after Telegram approval.
-
-## CLI
-
-Read-only commands use the Python standard library:
+Для локального запуска CLI достаточно выполнить проверку сессии:
 
 ```bash
 python3 skills/guap-pro/scripts/guap.py pro check
-python3 skills/guap-pro/scripts/guap.py pro tasks --format json
-python3 skills/guap-pro/scripts/guap.py pro task <TASK_ID> --format json
-python3 skills/guap-pro/scripts/guap.py pro materials --format json
-python3 skills/guap-pro/scripts/guap.py pro profile --format json
-python3 skills/guap-pro/scripts/guap.py pro subjects --format json
-python3 skills/guap-pro/scripts/guap.py pro subject <SUBJECT_ID> --format json
-python3 skills/guap-pro/scripts/guap.py pro marks --format json
-python3 skills/guap-pro/scripts/guap.py pro schedule --date YYYY-MM-DD --format json
-python3 skills/guap-pro/scripts/guap.py pro reports --format json
-python3 skills/guap-pro/scripts/guap.py pro notices --format json
-python3 skills/guap-pro/scripts/guap.py pro professors --format json
 ```
 
-The added read-only methods cover disciplines, subject details, grades,
-schedule, submitted reports, announcements, and teacher search. Filters are
-available for semester, subject, status, text search, teacher, group, building,
-room, and pagination where the cabinet exposes them.
+Если ГУАП сбросил сессию, skill возвращает `reauth_required` и просит повторно
+авторизоваться. Отправка отчётов и другие изменяющие действия требуют отдельного
+подтверждения.
 
-Local interactive authentication opens persistent Chrome/Chromium state under
-`$HERMES_HOME/guap-pro/chrome-profile/`:
+## Связь с labflow
 
-```bash
-python3 skills/guap-pro/scripts/guap.py pro auth
+`labflow` остаётся универсальным workflow: контекст задания, код, вычисления,
+отчёт и self-review. `guap-pro` добавляет только специфику ГУАП и текущие данные
+личного кабинета. Требования вуза не добавляются в общий репозиторий.
+
+## Структура
+
+```text
+skills/guap-pro/
+├── SKILL.md
+├── scripts/
+│   ├── guap.py
+│   └── relay.py
+├── references/
+│   ├── teachers/
+│   └── subjects/
+└── assets/
+    └── banner-prompt.md
 ```
 
-Remote relay, after explicit user approval:
+Промпт для генерации баннера: [`assets/banner-prompt.md`](assets/banner-prompt.md).
 
-```bash
-python3 skills/guap-pro/scripts/relay.py \
-  --bind 0.0.0.0 \
-  --port 8765 \
-  --public-url https://login.example.com \
-  --approval-scope 'GUAP read-only access'
-```
-
-The command prints a short-lived login URL as JSON and waits for the user-driven
-login. It rejects non-HTTPS public URLs. Put a real TLS reverse proxy in front of
-it, or provide `--certfile` and `--keyfile`.
-
-## References
-
-References are based on the supplied previous-semester archive and are labeled as
-confirmed, observed, or user-provided. Current task data always has priority.
-
-## Moodle
-
-Moodle is intentionally not included. It will be a separate project.
-
-## License
+## Лицензия
 
 MIT
