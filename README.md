@@ -21,6 +21,17 @@
 
 ## Установка
 
+Сначала установи общий workflow `labflow`:
+
+```bash
+npx skills add pank-su/labflow --copy
+```
+
+Установщик покажет доступные skills и harness’ы. Выбери нужные компоненты и
+подтверди установку через `yes`.
+
+После этого установи ГУАП-расширение:
+
 Для Claude Code, Codex CLI и OpenCode запусти команду из каталога проекта или с
 `--global` для установки пользователю:
 
@@ -30,12 +41,6 @@ npx skills add pank-su/guap-skill --skill guap-pro --copy
 
 Установщик покажет доступные harness’ы. Выбери нужный инструмент и подтверди
 установку через `yes`.
-
-Для Hermes:
-
-```bash
-hermes skills install https://raw.githubusercontent.com/pank-su/guap-skill/main/skills/guap-pro/SKILL.md --name guap-pro
-```
 
 Подробная инструкция для разных режимов установки находится в
 [`INSTALL.md`](INSTALL.md).

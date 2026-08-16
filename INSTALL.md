@@ -4,6 +4,18 @@
 portable skill bundle; the target harness decides where that bundle is installed.
 No Python package installation or build is required.
 
+## Dependency: `labflow`
+
+`guap-pro` adds GUAP-specific data and references on top of the generic `labflow`
+workflow. Install `labflow` first:
+
+```bash
+npx skills add pank-su/labflow --copy
+```
+
+The interactive installer lets the user select the harnesses, skills, and scope,
+then asks for confirmation. After that, install `guap-pro` using the command below.
+
 ## Claude Code, Codex CLI, and OpenCode
 
 Install globally for the current user with the shared `npx skills` installer.
@@ -38,25 +50,6 @@ The native discovery locations are:
 
 OpenCode also reads the Claude- and Agent-Skills-compatible locations.
 
-## Hermes Agent
-
-Install directly from GitHub:
-
-```bash
-hermes skills install \
-  https://raw.githubusercontent.com/pank-su/guap-skill/main/skills/guap-pro/SKILL.md \
-  --name guap-pro
-```
-
-Verify:
-
-```bash
-hermes skills list
-```
-
-The installed skill becomes available as `/guap-pro` in Hermes CLI and connected
-messaging platforms. Hermes keeps it under `$HERMES_HOME/skills/`.
-
 ## Use from a checkout
 
 For development or a local checkout:
@@ -75,8 +68,6 @@ the directory containing `SKILL.md`, not assume the user's project CWD.
 ```bash
 npx skills update guap-pro
 npx skills remove guap-pro
-hermes skills update
-hermes skills uninstall guap-pro
 ```
 
 After installation, restart the harness if it does not discover the updated
