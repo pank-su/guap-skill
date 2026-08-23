@@ -32,6 +32,23 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from relay_validation import validate_public_url
+except ImportError:  # pragma: no cover - supports package and file-style imports
+    try:
+        from .relay_validation import validate_public_url
+    except ImportError:  # pragma: no cover - tests load this script by path
+        import importlib.util
+
+        _validation_spec = importlib.util.spec_from_file_location(
+            "guap_relay_validation", Path(__file__).with_name("relay_validation.py")
+        )
+        if _validation_spec is None or _validation_spec.loader is None:
+            raise
+        _validation_module = importlib.util.module_from_spec(_validation_spec)
+        _validation_spec.loader.exec_module(_validation_module)
+        validate_public_url = _validation_module.validate_public_url
+
+try:
     from guap import BASE_URL, Node, Parser, save_cookie
 except ImportError:  # pragma: no cover - supports package-style imports
     from .guap import BASE_URL, Node, Parser, save_cookie
@@ -230,7 +247,22 @@ class RelaySession:
     def cookie_header(self) -> str:
         return "; ".join(f"{item.name}={item.value}" for item in self.jar)
 
-    def destroy(self) -> None:
+    def destroy(self, *, defer_if_locked: bool = False) -> None:
+        if defer_if_locked:
+            if not self._lock.acquire(blocking=False):
+                # An upstream request may hold the lock for its network timeout.
+                # Do not make tunnel failure wait; the daemon cleanup clears
+                # memory when that request releases the lock (or process exit
+                # clears it).
+                threading.Thread(target=self.destroy, daemon=True, name="relay-cleanup").start()
+                return
+            try:
+                self.jar.clear()
+                self.form = None
+                self.state = "destroyed"
+            finally:
+                self._lock.release()
+            return
         with self._lock:
             self.jar.clear()
             self.form = None
@@ -391,6 +423,7 @@ def serve(
     cookie_path: Path,
     certfile: Path | None = None,
     keyfile: Path | None = None,
+    abort_event: threading.Event | None = None,
 ) -> int:
     token = secrets.token_urlsafe(32)
     session = RelaySession(token, ttl)
@@ -405,15 +438,21 @@ def serve(
     link = public_url.rstrip("/") + "/login/" + token
     print(json.dumps({"status": "waiting", "url": link, "expires_in": ttl, "scope": approval_scope}, ensure_ascii=False), flush=True)
     try:
-        while not state.done.is_set() and not session.expired():
+        while not state.done.is_set() and not session.expired() and not (abort_event and abort_event.is_set()):
             server.handle_request()
-        if state.done.is_set():
+        if state.done.is_set() and session.state == "authenticated":
             print(json.dumps({"status": "authenticated", "cookie_path": str(cookie_path)}, ensure_ascii=False), flush=True)
             return 0
+        if abort_event and abort_event.is_set():
+            print(json.dumps({"status": "tunnel_failed"}, ensure_ascii=False), flush=True)
+            return 3
+        if state.done.is_set():
+            print(json.dumps({"status": "failed"}, ensure_ascii=False), flush=True)
+            return 1
         print(json.dumps({"status": "expired"}, ensure_ascii=False), flush=True)
         return 2
     finally:
-        session.destroy()
+        session.destroy(defer_if_locked=bool(abort_event and abort_event.is_set()))
         server.server_close()
 
 
@@ -429,14 +468,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--certfile", type=Path)
     parser.add_argument("--keyfile", type=Path)
     args = parser.parse_args(argv)
-    if not args.public_url.startswith("https://"):
-        print("Refusing non-HTTPS public URL", file=sys.stderr)
+    try:
+        public_url = validate_public_url(args.public_url)
+    except ValueError as exc:
+        print(f"Refusing public URL: {exc}", file=sys.stderr)
         return 2
     try:
         return serve(
             bind=args.bind,
             port=args.port,
-            public_url=args.public_url,
+            public_url=public_url,
             ttl=args.ttl,
             user_label=args.user_label,
             approval_scope=args.approval_scope,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -124,6 +125,26 @@ class ParserTests(unittest.TestCase):
         with patch.object(module, "request", return_value="<table><tr><th>Пара</th></tr></table>") as request, patch.object(module, "output"):
             self.assertEqual(module.main(["pro", "schedule", "--date", "2026-08-16", "--group", "215"]), 0)
             request.assert_called_once_with("/inside/students/classes/schedule/day/2026-08-16", {"group": 215})
+
+
+class BrowserAuthenticationTests(unittest.TestCase):
+    def test_browser_command_preserves_absolute_path_with_spaces(self) -> None:
+        binary = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        self.assertEqual(module._browser_command(binary), [binary])
+
+    def test_browser_binary_detects_macos_google_chrome(self) -> None:
+        binary = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        with patch.object(module.shutil, "which", side_effect=lambda value: value if value == binary else None):
+            self.assertEqual(module._browser_binary(None), binary)
+
+    def test_browser_launch_failure_removes_profile_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / "chrome-profile"
+            lock = profile.parent / f".{profile.name}.lock"
+            with patch.object(module.subprocess, "Popen", side_effect=FileNotFoundError("missing")):
+                with self.assertRaises(FileNotFoundError):
+                    module.browser_cookie(1, sys.executable, False, profile)
+            self.assertFalse(lock.exists())
 
 
 if __name__ == "__main__":
