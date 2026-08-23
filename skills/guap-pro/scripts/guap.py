@@ -522,11 +522,25 @@ def _json_url(url: str) -> Any:
 
 def _browser_binary(explicit: str | None) -> str:
     candidates = [explicit] if explicit else []
-    candidates += ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"]
+    candidates += [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "chrome",
+        "msedge",
+    ]
     for candidate in candidates:
         if candidate and shutil.which(candidate):
             return candidate
     raise RuntimeError("Chrome or Chromium was not found. Use --browser-command or provide GUAP_COOKIE manually.")
+
+
+def _browser_command(binary: str) -> list[str]:
+    """Preserve absolute executable paths while allowing named commands."""
+    return [binary] if Path(binary).is_absolute() else shlex.split(binary)
 
 
 def _free_port() -> int:
@@ -547,19 +561,20 @@ def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool
     except FileExistsError as exc:
         raise RuntimeError("GUAP browser profile is already in use") from exc
     os.close(lock_fd)
-    port = _free_port()
-    command = shlex.split(binary)
-    command += [
-        f"--remote-debugging-port={port}",
-        f"--user-data-dir={profile}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        BASE_URL,
-    ]
-    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + timeout
-    announced = False
+    process: subprocess.Popen[bytes] | None = None
     try:
+        port = _free_port()
+        command = _browser_command(binary)
+        command += [
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            BASE_URL,
+        ]
+        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + timeout
+        announced = False
         while time.monotonic() < deadline:
             try:
                 targets = _json_url(f"http://127.0.0.1:{port}/json/list")
@@ -590,14 +605,14 @@ def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool
             time.sleep(1)
         raise RuntimeError("GUAP browser authentication timed out")
     finally:
-        if not keep_browser:
+        if process is not None and not keep_browser:
             process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-            if ephemeral:
-                shutil.rmtree(profile, ignore_errors=True)
+        if ephemeral and not keep_browser:
+            shutil.rmtree(profile, ignore_errors=True)
         lock_path.unlink(missing_ok=True)
 
 

@@ -5,8 +5,10 @@ import importlib.util
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,6 +112,124 @@ class RelayTests(unittest.TestCase):
         session = relay.RelaySession("token", ttl=0)
         self.assertFalse(session.valid("token"))
         self.assertEqual(session.state, "created")
+
+    def test_serve_returns_tunnel_failed_when_aborted(self) -> None:
+        abort_event = threading.Event()
+        abort_event.set()
+        server = unittest.mock.MagicMock()
+        with (
+            patch.object(relay, "RelayHTTPServer", return_value=server),
+            patch.object(relay, "print") as output,
+        ):
+            result = relay.serve(
+                bind="127.0.0.1",
+                port=8765,
+                public_url="https://relay.example.com/guap",
+                ttl=300,
+                user_label="telegram-user",
+                approval_scope="GUAP read-only access",
+                cookie_path=Path("/tmp/cookie"),
+                abort_event=abort_event,
+            )
+        self.assertEqual(result, 3)
+        self.assertIn('"status": "tunnel_failed"', output.call_args_list[-1].args[0])
+
+    def test_serve_reports_failed_done_state_as_failed(self) -> None:
+        server = unittest.mock.MagicMock()
+
+        def server_factory(address, state):
+            def finish_with_failure() -> None:
+                state.session.state = "failed"
+                state.session.error = "upstream failed"
+                state.done.set()
+
+            server.handle_request.side_effect = finish_with_failure
+            return server
+
+        with (
+            patch.object(relay, "RelayHTTPServer", side_effect=server_factory),
+            patch.object(relay, "print") as output,
+        ):
+            result = relay.serve(
+                bind="127.0.0.1",
+                port=8765,
+                public_url="https://relay.example.com/guap",
+                ttl=300,
+                user_label="telegram-user",
+                approval_scope="GUAP read-only access",
+                cookie_path=Path("/tmp/cookie"),
+            )
+        self.assertEqual(result, 1)
+        self.assertIn('"status": "failed"', output.call_args_list[-1].args[0])
+        self.assertNotIn('"status": "authenticated"', output.call_args_list[-1].args[0])
+
+    def test_direct_cli_rejects_public_url_delimiters_and_credentials(self) -> None:
+        invalid_urls = (
+            "https://relay.example.com/guap?",
+            "https://relay.example.com/guap#",
+            "https://relay.example.com/guap?token=secret",
+            "https://relay.example.com/guap#login",
+            "https://user:password@relay.example.com/guap",
+            "https://relay.example.com:bad/guap",
+            "https://relay.example.com:/guap",
+            "https:///guap",
+            "http://relay.example.com/guap",
+        )
+        for public_url in invalid_urls:
+            with self.subTest(public_url=public_url), patch.object(relay, "serve") as serve:
+                result = relay.main(
+                    [
+                        "--public-url",
+                        public_url,
+                        "--approval-scope",
+                        "GUAP read-only access",
+                    ]
+                )
+            self.assertEqual(result, 2)
+            serve.assert_not_called()
+
+    def test_abort_cleanup_does_not_wait_for_session_lock(self) -> None:
+        session = relay.RelaySession("test-token")
+        session.form = relay.LoginForm(action="https://sso.guap.ru/login", method="POST")
+        release_lock = threading.Event()
+        lock_ready = threading.Event()
+
+        def hold_session_lock() -> None:
+            with session._lock:
+                lock_ready.set()
+                release_lock.wait(2)
+
+        holder = threading.Thread(target=hold_session_lock)
+        holder.start()
+        self.assertTrue(lock_ready.wait(1))
+        abort_event = threading.Event()
+        abort_event.set()
+        server = unittest.mock.MagicMock()
+        try:
+            with patch.object(relay, "RelaySession", return_value=session), patch.object(
+                relay, "RelayHTTPServer", return_value=server
+            ):
+                result = relay.serve(
+                    bind="127.0.0.1",
+                    port=8765,
+                    public_url="https://relay.example.com/guap",
+                    ttl=300,
+                    user_label="telegram-user",
+                    approval_scope="GUAP read-only access",
+                    cookie_path=Path("/tmp/cookie"),
+                    abort_event=abort_event,
+                )
+            self.assertEqual(result, 3)
+            self.assertNotEqual(session.state, "destroyed")
+        finally:
+            release_lock.set()
+            holder.join(1)
+        for _ in range(100):
+            if session.state == "destroyed":
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(session.state, "destroyed")
+        self.assertIsNone(session.form)
 
 
 if __name__ == "__main__":
