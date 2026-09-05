@@ -1,22 +1,28 @@
 ---
 name: guap-pro
 description: Read GUAP tasks and authorize through Hermes.
-version: 0.4.0
+version: 0.6.2
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [GUAP, CLI, Telegram, authentication, labs]
-    related_skills: []
+    related_skills: [labflow-guap]
     external_skills: [labflow]
 ---
 
 # guap-pro Skill
 
 Use the dependency-free CLI and optional credential relay to work with the GUAP
-personal cabinet from Hermes and Telegram. This skill adds GUAP teacher and subject
-references on top of the generic `labflow` skill. It contains no MCP server.
+personal cabinet from Hermes and Telegram. This skill owns cabinet access, authentication
+and sanitized task retrieval. `labflow-guap` separately owns GUAP artifact/style
+adaptation; generic `labflow` owns academic phase ordering. It contains no MCP server.
+
+A request to edit a supplied PDF, report or presentation is not a cabinet-access
+request: use local sources and `labflow-guap`, without reading cookies, authenticating,
+or fetching task data. Authentication and read-only permits never authorize publishing
+code or submitting coursework. Preserve the existing permit, relay and monitor boundaries.
 
 ## When to Use
 
@@ -29,7 +35,7 @@ Do not use it for Moodle. Do not use the relay for unrelated websites.
 ## Prerequisites
 
 - Python 3.10+ with only the standard library.
-- The `labflow` skill available separately.
+- The `labflow-guap` and `labflow` skills are needed only for producing academic artifacts, not cabinet-only reads.
 - A user-approved HTTPS endpoint for the relay, or a local Chrome/Chromium window.
 - The user must explicitly approve account access in Telegram before Hermes reads
   cookies, opens the relay, or requests GUAP data.
@@ -102,21 +108,70 @@ and host values.
 
 ## Telegram Approval Gate
 
-Before any account operation, ask in Telegram with an explicit scope, for example:
-
-> Разрешить открыть ГУАП и получить текущие задания? Это read-only доступ.
+Before account access, require either a current-session approval naming the scope or
+an explicit standing read-only grant. A standing grant is opt-in, remains valid
+until its declared expiry or revocation, and must be represented by a mode-0600
+permit at `$HERMES_HOME/guap-pro/background-permit.json`. It may cover only the
+exact read-only commands `tasks`, `marks`, `notices`, and `reports`; the monitor
+must fail closed if the permit is missing, disabled, malformed, or has a different
+scope.
 
 Rules:
 
-1. No clear approval means no browser launch, cookie read, relay start, or GUAP request.
-2. Approval applies only to the named scope and current session.
-3. Ask again before uploading, resubmitting, or changing cabinet state.
-4. Do not treat a reply to an unrelated message as approval.
-5. Never put the password or cookies in Telegram, tool output, logs, reports, or Git.
+1. Without a current approval or valid standing permit, do not launch a browser,
+   read cookies, start a relay, or request GUAP data.
+2. Current-session approval applies only to its named scope. Standing approval
+   applies only to the exact commands in its permit and never authorizes login.
+3. Ask again before starting a credential relay, uploading, resubmitting, changing
+   cabinet state, or expanding the standing scope.
+4. Revocation takes effect by disabling/removing the permit and pausing/removing
+   the corresponding cron job. A revoked permit must fail closed.
+5. Do not treat a reply to an unrelated message as approval.
+6. Never put the password or cookies in Telegram, tool output, logs, reports, or Git.
 
 The CLI cannot cryptographically verify a Telegram reply. The `--approval-scope`
-argument is an explicit operational guard: Hermes supplies it only after receiving
-approval and must keep the scope identical to the confirmation.
+argument is an explicit operational guard for interactive authentication: Hermes
+supplies it only after receiving approval and must keep the scope identical to the
+confirmation. A standing read-only permit is a separate local capability and does
+not authorize `remote_relay.py` or `guap.py pro auth`.
+
+## Standing Background Monitor
+
+A no-agent cron monitor may use a valid standing permit to call only `tasks`,
+`marks`, `notices`, and `reports`. Keep the scheduler wake-up deterministic and the
+actual cabinet requests randomized locally. For this profile, wake every 15 minutes,
+choose 1–8 active ticks between requests (15–120 minutes), and make no cabinet
+requests from 23:00 through 07:59 local time. Night ticks must not consume the
+remaining active-tick counter.
+
+The monitor must establish a silent baseline, emit only exact deltas, persist only
+normalized records and scheduling metadata with mode `0600`, and deduplicate
+unchanged, repeated-error, and `reauth_required` states. It must never invoke
+`auth`, start a relay, or perform a write. When reauthentication is required, send
+one sanitized notice and wait for a separate current-session authentication
+approval.
+
+### Daily Task and Material Sync
+
+A separately approved no-agent daily sync may use
+`$HERMES_HOME/guap-pro/daily-sync-permit.json` with the exact scope `tasks`,
+`task`, `materials`, and `subjects`. Keep this permit separate from the standing
+monitor permit. It authorizes only read-only retrieval and local file writes; it
+never authorizes `auth`, a credential relay, report upload, task submission, or
+other GUAP mutations.
+
+The sync must filter user-declared excluded subjects before fetching task details,
+downloading materials, or creating work. Store task sources, subject indexes,
+material files, and external-link references locally with private permissions.
+Create blocked, unassigned Labflow Kanban cards with a stable idempotency key
+derived from the GUAP task ID and a durable workspace. They must remain
+non-dispatchable until the user manually reviews, assigns, and unblocks them. Each
+card must forbid GUAP submission and use only the local source and material copies. A first baseline is silent except for newly
+created actionable lab cards; unchanged runs produce no output. The daily sync
+comments task-status transitions on existing cards without delivering a duplicate
+user alert; the standing monitor remains the single source of user-visible task
+status deltas. Deliver only new actionable labs, unique sync errors, or
+`reauth_required` from the daily job.
 
 ## Credential Relay
 
@@ -138,7 +193,9 @@ The relay:
 - destroys the in-memory jar after completion or expiry; on tunnel abort it returns
   without waiting for an in-flight upstream request and defers lock-held cleanup
   to a daemon cleanup thread (process exit also clears process memory);
-- returns `reauth_required` or `relay_failed` instead of retrying blindly.
+- returns `reauth_required` or `relay_failed` instead of retrying blindly;
+- sends the terminal HTML response before setting the completion event, so the
+  server and SSH tunnel cannot close while the browser is still receiving it.
 
 The direct `relay.py` CLI and `remote_relay.py` use the same public-URL validation:
 only an HTTPS URL with a host and optional path is accepted. Credentials, control
@@ -154,9 +211,11 @@ keep the URL short-lived, and do not send it to anyone except the approving user
 
 ## Procedure
 
-1. Ask for Telegram approval naming `read-only access` or the exact state-changing scope.
+1. Verify a current-session approval or an enabled, exact-scope standing read-only
+   permit before reading the cookie or requesting cabinet data.
 2. If the cookie session may be valid, run `guap.py pro check` through `terminal`.
-3. If the result contains `reauth_required`, choose authentication from the actual
+3. If the result contains `reauth_required`, obtain a separate current-session
+   approval for authentication. Then choose authentication from the actual
    communication channel: use `remote_relay.py` for Telegram/remote chat; use
    `guap.py pro auth` only after the user explicitly says they can use the same Mac.
 4. For a remote relay, confirm the exact HTTPS hostname and who controls TLS
@@ -168,10 +227,16 @@ keep the URL short-lived, and do not send it to anyone except the approving user
 7. Wait for the process to report `authenticated`; do not assume success from the
    user saying that the form was submitted. The wrapper closes SSH automatically.
 8. Run `guap.py pro check` again, then retrieve the requested data as JSON.
-9. For lab work, load `subjects`, `subject`, `tasks`, `reports`, `materials`, and
-   matching teacher/subject references together; do not infer status from one page.
-10. For planning, use `schedule`, `marks`, and `notices` as separate current sources.
-11. Hand the sanitized current task context to `labflow` for the generic workflow.
+9. For lab work, retrieve only sources required by the task and authorized by the
+   current scope. A standing/daily permit does not authorize broader commands such
+   as `subject` or `profile`. Do not run this interactive procedure under a narrow
+   permit if it would expand access; use the permit's dedicated read-only workflow.
+   Distinguish live cabinet status, attached methodology, and teacher/subject hints.
+10. For planning, use `schedule`, `marks`, and `notices` only when each command is
+    authorized and relevant; do not infer one source from another.
+11. Hand only sanitized task context and approved local source copies to
+    `labflow-guap` and `labflow`. Record GUAP task ID, source path, retrieval time,
+    requirements and unresolved conflicts; never pass cookies, relay links or credentials.
 12. Before any upload, ask for a separate Telegram confirmation and re-check the task.
 
 ## Source Policy
@@ -181,8 +246,9 @@ Use information in this order:
 1. Current task details from the live CLI.
 2. The current methodology or attached files.
 3. Explicit user-provided notes.
-4. References marked `confirmed`.
-5. References marked `observed` as planning hints only.
+4. Relevant teacher/subject references with plain source attribution. Historical
+   patterns are planning context, not current requirements. Do not assign confidence
+   badges or verification-status labels to teachers or subjects.
 
 Never turn an old archive pattern into a current requirement without checking the
 live task. If sources conflict, preserve the conflict and ask the user.

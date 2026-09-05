@@ -5,9 +5,9 @@
 - Subject: Инженерная экология.
 - Archive tasks include a report, lecture-material verification, and practical
   assignments.
-- Evidence status: `confirmed` from task descriptions in the supplied session archive.
+- Source: task descriptions in the supplied session archive.
 
-## Observed Submission Pattern
+## Submission Examples from the Archive
 
 - The report task requires a completed title page.
 - The report is required in PDF format.

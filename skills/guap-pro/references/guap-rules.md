@@ -2,11 +2,11 @@
 
 These rules are the operational baseline for the GUAP companion skill.
 
-## Evidence labels
+## Sources, not confidence badges
 
-- `confirmed` — stated in a current task, methodology, or repeated archive evidence.
-- `user_note` — explicitly supplied by the user; keep the provenance visible.
-- `observed` — a recurring pattern in the archive that still needs current-task confirmation.
+Keep plain source attribution (task, methodology, user advice, archive) without
+verification/status labels on teachers or subjects. Archive notes are context,
+not current requirements. Preserve uncertainty and source conflicts in plain prose.
 
 ## Current-task handling
 
@@ -20,8 +20,10 @@ These rules are the operational baseline for the GUAP companion skill.
 
 ## Report handling
 
-- Generate a title page only from the context supplied by the user or the current
-  task. Never fill a teacher, department, group, or city from memory.
+- For a required GUAP title page, use `labflow-guap` and its protected generator.
+  Edit only `index.typ` manually; set title metadata only through the script.
+  Preserve the selected completed-lab layout, never redesign it or fill teacher,
+  department, group, city or date from an old example. A request for no title page wins.
 - Match the required file extension exactly.
 - Keep the report's calculations and code traceable to real artifacts.
 - Do not assume that a previous semester's GOST or title-page layout is current.

@@ -1,0 +1,9 @@
+{
+  "source_repository": "https://github.com/pank-suai/mat_osn_lab_1",
+  "source_directory": "docs/lib",
+  "provenance": "User-designated completed lab source; lab_template local iCloud copies returned empty and public main URLs were unavailable. These are exact source bytes, not a newly invented official standard.",
+  "files": {
+    "titlepage.typ": "46a24a747873436a14d6ded8062f5b84fdce0da6f9b16cbf032dd218f822ae4c",
+    "gost.typ": "0996798b3ce078095efab6a224ef47ecc5ab8ebaeee7bbe8c95b19d0095d7727"
+  }
+}

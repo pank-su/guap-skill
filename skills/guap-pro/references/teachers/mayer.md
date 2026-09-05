@@ -4,9 +4,9 @@
 
 - Subject: Большие данные и облачные вычисления.
 - Archive tasks include Cats and dogs and Data Set in progress laboratory works.
-- Evidence status: `confirmed` from task descriptions in the supplied session archive.
+- Source: task descriptions in the supplied session archive.
 
-## Observed Submission Pattern
+## Submission Examples from the Archive
 
 - Work is performed in Google Colab.
 - The submission is a Word document with a title page and a link to the notebook.

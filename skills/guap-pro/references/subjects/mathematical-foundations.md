@@ -2,12 +2,12 @@
 
 ## Archive Pattern
 
-- Tasks observed: model construction and dynamic programming in investment
+- Tasks in the archive: model construction and dynamic programming in investment
   management.
 - Associated teacher in the archive: Вершинина Лилия Павловна.
 - Reports use Typst/GOST-style infrastructure in the supplied projects.
-- Evidence status: subject/task association is `confirmed`; defense preparation is
-  a `user_note` and should be presented as preparation advice, not an official rule.
+- Sources: the supplied archive and user advice on defense preparation.
+  Preparation advice is not an official grading rule.
 
 ## Required Agent Behavior
 

@@ -5,8 +5,7 @@
 - Subject: Алгоритмы и структуры данных.
 - Archive association: course project on using data structures and algorithms in
   an information system.
-- Evidence status: `confirmed` for the association; detailed current requirements
-  must come from the task and methodology.
+- Source: the supplied archive. Detailed current requirements come from the task and methodology.
 
 ## Agent Behavior
 

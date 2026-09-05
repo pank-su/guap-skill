@@ -6,8 +6,7 @@
   Матьяш Валерий Анатольевич.
 - The related personal project uses a catalog-style information system and requires
   discussion of data structures, algorithms, tests, and design choices.
-- Evidence status: the teacher association is `confirmed`; the detailed course
-  requirements must come from the current task and methodology.
+- Source: the supplied archive. Detailed course requirements come from the current task and methodology.
 
 ## Required Agent Behavior
 

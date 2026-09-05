@@ -2,7 +2,7 @@
 
 ## Archive Pattern
 
-- Tasks observed: Newton's method for nonlinear equations and numerical integration.
+- Tasks in the archive: Newton's method for nonlinear equations and numerical integration.
 - Associated teacher in the archive: Пичугин Юрий Александрович.
 - PDF reports and tables of sequential calculations are explicitly mentioned in
   task descriptions.

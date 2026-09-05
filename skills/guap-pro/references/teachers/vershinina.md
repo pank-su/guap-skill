@@ -5,8 +5,7 @@
 - Subject: Математические основы систем управления.
 - Archive tasks: построение модели объекта управления; метод динамического
   программирования в управлении инвестициями.
-- Evidence: `confirmed` for the subject association; `user_note` for the defense
-  preparation advice below.
+- Sources: the supplied archive for the subject association; user advice for defense preparation.
 
 ## Before Submission
 

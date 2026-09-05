@@ -2,7 +2,7 @@
 
 ## Archive Pattern
 
-- Tasks observed: Planes, Cats and dogs, and Data Set in progress.
+- Tasks in the archive: Planes, Cats and dogs, and Data Set in progress.
 - Associated teacher in the archive: Майер Евгений Алексеевич.
 - Task descriptions mention Google Colab, a Word document with a title page,
   notebook links, in-class defense, and—in one task—comparison across at least

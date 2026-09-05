@@ -2,7 +2,7 @@
 
 ## Archive Pattern
 
-- Tasks observed: a report, lecture-material verification, and practical assignments.
+- Tasks in the archive: a report, lecture-material verification, and practical assignments.
 - Associated teachers in the archive: Климочкина Лидия Антоновна and Смирнова
   Александра Сергеевна.
 - A report task explicitly mentions a completed title page, PDF output, and a GUAP

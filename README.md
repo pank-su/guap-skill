@@ -78,20 +78,67 @@ python3 skills/guap-pro/scripts/guap.py pro check
 ## Связь с labflow
 
 `labflow` остаётся универсальным workflow: контекст задания, код, вычисления,
-отчёт и self-review. `guap-pro` добавляет только специфику ГУАП и текущие данные
-личного кабинета. Требования вуза не добавляются в общий репозиторий.
+отчёт и self-review. В этом репозитории ответственность разделена:
+
+- `guap-pro` — кабинет, авторизация и получение заданий. Локальная правка PDF не требует входа в кабинет.
+- `labflow-guap` — отдельный адаптер учебных работ ГУАП: исходные требования, стиль предыдущей работы, защищённый шаблон и соразмерная проверка правок.
+- `guap-coursework-artifacts` — подробные процедуры сборки, диаграмм и визуальной проверки курсовых материалов.
+
+Карточки преподавателей и предметов содержат сведения и источники без бейджей
+достоверности. Исторические примеры не подменяют текущую методичку.
+
+Для установки адаптера:
+
+```bash
+npx skills add pank-su/guap-skill --skill labflow-guap --copy
+npx skills add pank-su/guap-skill --skill guap-coursework-artifacts --copy
+```
+
+## Защищённый шаблон лабораторной
+
+Шаблон титульника и ГОСТ-оформления взят побайтово из выполненной лабораторной
+`pank-suai/mat_osn_lab_1`. Происхождение и SHA-256 находятся в
+`skills/labflow-guap/assets/guap/source.json`. Исходная лабораторная не меняется.
+
+```bash
+python3 skills/labflow-guap/scripts/guap_template.py init ./my-lab
+python3 skills/labflow-guap/scripts/guap_template.py title ./my-lab --data ./title-data.json
+python3 skills/labflow-guap/scripts/guap_template.py check ./my-lab
+python3 skills/labflow-guap/scripts/guap_template.py build ./my-lab
+```
+
+Внутри шаблона вручную редактируется только `index.typ`. Поля титульника меняет
+команда `title`, служебные файлы в `.guap` защищены проверкой целостности.
+Сборка идёт через фиксированную точку входа; ручное изменение титульника,
+ГОСТ-правил или сохранённых реквизитов блокирует штатный `build`.
+
+Входной JSON принимает `title`, `authors`, `teachers`, `date`, `education`,
+`department`, `position`, `documentName`, `group`, `city`, `object`.
+Авторы и преподаватели — массивы строк; остальные поля — строки, дата —
+`YYYY-MM-DD`. Можно обновлять поля частично. Пустые реквизиты не заполняются
+выдуманными значениями, сборка требует полного набора.
+
+Это контроль случайных правок, не sandbox против агента с полным доступом
+к файлам. Обход проверки или изменение самого генератора не разрешены workflow.
+Существующие отчёты автоматически не мигрируются; просьба «без титульника» сохраняется.
+
+## Проверки
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 skills/labflow-guap/scripts/test_guap_template.py
+```
+
+Для сборки PDF нужен Typst; для тестов достаточно стандартной библиотеки Python,
+а тесты реальной компиляции дополнительно используют доступный Typst.
 
 ## Структура
 
 ```text
-skills/guap-pro/
-├── SKILL.md
-├── scripts/
-│   ├── guap.py
-│   └── relay.py
-├── references/
-│   ├── teachers/
-│   └── subjects/
+skills/
+├── guap-pro/                  # кабинет и справочные сведения
+├── labflow-guap/              # адаптер, генератор, неизменяемые образцы
+└── guap-coursework-artifacts/  # сборка и визуальная проверка материалов
 ```
 
 ## Лицензия

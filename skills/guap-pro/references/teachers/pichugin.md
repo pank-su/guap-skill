@@ -5,9 +5,9 @@
 - Subject: Вычислительная математика.
 - Archive tasks include Newton's method for a system of nonlinear equations and
   numerical integration.
-- Evidence status: `confirmed` from task descriptions in the supplied session archive.
+- Source: task descriptions in the supplied session archive.
 
-## Observed Submission Pattern
+## Submission Examples from the Archive
 
 - The report is submitted as a PDF.
 - The Newton task requires tables showing sequential calculation steps.
