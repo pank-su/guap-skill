@@ -11,8 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class AcademicSkillContractTests(unittest.TestCase):
     def test_teacher_and_subject_notes_have_no_confidence_badges(self):
-        references = ROOT / 'skills' / 'guap-pro' / 'references'
-        files = sorted(references.rglob('*.md'))
+        references = ROOT / 'skills' / 'labflow-guap' / 'references'
+        files = []
+        for directory in ('teachers', 'subjects'):
+            self.assertFalse((ROOT / 'skills' / 'guap-pro' / 'references' / directory).exists())
+            self.assertTrue((references / directory / 'index.md').is_file())
+            files.extend(sorted((references / directory).glob('*.md')))
         self.assertTrue(files)
         for path in files:
             with self.subTest(path=str(path.relative_to(ROOT))):

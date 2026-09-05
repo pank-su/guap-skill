@@ -1,7 +1,7 @@
 ---
 name: labflow-guap
 description: "Use when producing or revising GUAP coursework."
-version: 0.1.0
+version: 0.1.1
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -23,6 +23,18 @@ Apply a GUAP-specific artifact contract to Labflow. This skill owns source-to-st
 - Convert locally supplied GUAP task materials into an auditable Labflow project.
 
 Do not use for cabinet-only reads or unrelated academic institutions.
+
+## Teachers and subjects
+
+This skill owns the academic reference notes in `references/teachers/` and
+`references/subjects/`. Read `references/teachers/index.md` and
+`references/subjects/index.md`, then only the matching
+teacher/subject files when preparing a work or defense. Keep source attribution
+without confidence badges; historical advice does not override the current task,
+methodology or explicit user corrections. Do not infer an official grading rule
+from a teacher–subject association. `guap-pro` only retrieves live cabinet records;
+it does not own these preparation notes. The source archive covers the 2025/2026
+spring semester; treat its teaching advice as historical context, not a live rule.
 
 ## Prerequisites and scope
 

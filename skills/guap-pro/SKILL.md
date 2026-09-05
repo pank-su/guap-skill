@@ -1,7 +1,7 @@
 ---
 name: guap-pro
 description: Read GUAP tasks and authorize through Hermes.
-version: 0.6.2
+version: 0.6.3
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -27,7 +27,8 @@ code or submitting coursework. Preserve the existing permit, relay and monitor b
 ## When to Use
 
 - The user asks for current GUAP tasks, deadlines, materials, profile data, or status.
-- A `labflow` project needs GUAP teacher, subject, submission, or defense rules.
+- A project needs current task, subject or professor records retrieved from the cabinet.
+  Teaching notes and preparation/defense guidance belong to `labflow-guap`, not this skill.
 - The user needs remote re-authentication because GUAP invalidated the session.
 
 Do not use it for Moodle. Do not use the relay for unrelated websites.
@@ -231,7 +232,7 @@ keep the URL short-lived, and do not send it to anyone except the approving user
    current scope. A standing/daily permit does not authorize broader commands such
    as `subject` or `profile`. Do not run this interactive procedure under a narrow
    permit if it would expand access; use the permit's dedicated read-only workflow.
-   Distinguish live cabinet status, attached methodology, and teacher/subject hints.
+   Preserve live cabinet status and attached methodology as separate source records.
 10. For planning, use `schedule`, `marks`, and `notices` only when each command is
     authorized and relevant; do not infer one source from another.
 11. Hand only sanitized task context and approved local source copies to
@@ -246,9 +247,8 @@ Use information in this order:
 1. Current task details from the live CLI.
 2. The current methodology or attached files.
 3. Explicit user-provided notes.
-4. Relevant teacher/subject references with plain source attribution. Historical
-   patterns are planning context, not current requirements. Do not assign confidence
-   badges or verification-status labels to teachers or subjects.
+Academic interpretation and historical teacher/subject notes belong to
+`labflow-guap`; hand over current source records without imposing those notes.
 
 Never turn an old archive pattern into a current requirement without checking the
 live task. If sources conflict, preserve the conflict and ask the user.
@@ -288,5 +288,5 @@ no password, cookie value, or private task URL in the returned Hermes context.
 ## References
 
 - `references/guap-rules.md` — source precedence and cabinet rules.
-- `references/teachers/` — teacher-specific patterns and preparation notes.
-- `references/subjects/` — subject-specific patterns.
+Teacher and subject preparation references are maintained in `labflow-guap`, not
+in this skill.
