@@ -60,13 +60,27 @@ python3 skills/labflow-guap/scripts/guap_template.py build ./my-lab
 
 [Поля JSON и правила работы с шаблоном](skills/labflow-guap/references/protected-template.md).
 
+## Профили работ
+
+`labflow-guap` компилирует отдельные контракты для физлабы, краткой расчётной,
+курсового проекта и конспекта. Текущая методичка и явно принятые пользовательские
+поправки имеют приоритет над defaults; конфликты остаются видимыми.
+
+```bash
+python3 skills/labflow-guap/scripts/work_profiles.py list
+python3 skills/labflow-guap/scripts/work_profiles.py compile --profile physics --output-dir ./my-lab/context/profile
+```
+
+[Правила применения, атрибуция и интеграция с Labflow](skills/labflow-guap/references/work-profiles.md).
+Профили не изменяют защищённый шаблон, авторизацию или фоновые задания.
+
 ## Разработка
 
 ```bash
-python3 -m unittest discover -s tests -v
+uv run --python 3.11 --with pymupdf python -m unittest discover -s tests -v
 ```
 
-Проверки сборки PDF используют Typst и `pdftotext` из Poppler.
+Проверки сборки PDF используют Typst, PyMuPDF и `pdftotext` из Poppler.
 
 ## Лицензия
 

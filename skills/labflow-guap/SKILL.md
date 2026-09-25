@@ -1,7 +1,7 @@
 ---
 name: labflow-guap
 description: "Use when producing or revising GUAP coursework."
-version: 0.1.1
+version: 0.2.0
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -41,6 +41,23 @@ spring semester; treat its teaching advice as historical context, not a live rul
 Use the current attachment or requested artifact first. A local PDF/style correction does not require cabinet access, reauthentication, or a new download. Read the PDF with `read_file` or an extraction skill; a matching filename is not proof that it matches the workspace PDF.
 
 Before acting, classify the request as full deliverable, bounded revision, or publication. Record the selected scope. A request to revise is not permission to commit, push, upload, submit, or start background jobs.
+
+## Executable work profiles
+
+Before a full work or a revision that changes formatting rules, read
+[references/work-profiles.md](references/work-profiles.md). Through `terminal`,
+invoke `python3 <skill-root>/scripts/work_profiles.py compile` with the explicit
+physics/calculation/coursework/lecture profile, scope, output format and current
+source-attributed overrides. Use a new output directory; never overwrite a current
+contract or protected template. Defaults are not universal institutional rules.
+Conflicting methodology/user decisions stay blocked until explicitly accepted.
+
+The compiled contract drives specialist phases; PDF style is imported only into
+a permitted authored entry point, followed by normal template validation/build.
+For repeated items use the generic Labflow ticketed batch runtime; for full
+approval freeze its candidate with profile/source files as inputs and delivered
+artifacts as outputs. Profile generation alone is neither an academic review nor
+permission to publish. No cabinet/cron/auth changes are needed.
 
 ## Procedure
 

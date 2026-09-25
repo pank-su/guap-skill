@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "profile": "lecture",
+  "default_format": "notes",
+  "default_domains": [],
+  "rules": {
+    "font": "Times New Roman",
+    "body_pt": 14,
+    "table_pt": 14,
+    "rounding_decimals": null,
+    "materials_list": false,
+    "service_notes": false,
+    "limitations": "material_only",
+    "conclusion": "result_based",
+    "figure_table_crossrefs": true,
+    "first_level_new_page": false,
+    "worked_examples": "when_required",
+    "template": "current_notes_format",
+    "sections": [
+      "Тема",
+      "Основные положения",
+      "Определения и формулы",
+      "Итоги"
+    ]
+  }
+}
