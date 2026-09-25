@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "profile": "calculation",
+  "default_format": "pdf",
+  "default_domains": [
+    "math"
+  ],
+  "rules": {
+    "font": "Times New Roman",
+    "body_pt": 14,
+    "table_pt": 14,
+    "rounding_decimals": null,
+    "materials_list": false,
+    "service_notes": false,
+    "limitations": "material_only",
+    "conclusion": "result_based",
+    "figure_table_crossrefs": true,
+    "first_level_new_page": false,
+    "worked_examples": "one_per_type",
+    "template": "current_designated_template",
+    "sections": [
+      "Исходные данные",
+      "Расчёты",
+      "Результаты",
+      "Вывод"
+    ]
+  }
+}

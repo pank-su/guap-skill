@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "profile": "coursework",
+  "default_format": "pdf",
+  "default_domains": [],
+  "rules": {
+    "font": "Times New Roman",
+    "body_pt": 14,
+    "table_pt": 14,
+    "rounding_decimals": null,
+    "materials_list": false,
+    "service_notes": false,
+    "limitations": "material_only",
+    "conclusion": "result_based",
+    "figure_table_crossrefs": true,
+    "first_level_new_page": true,
+    "worked_examples": "when_required",
+    "template": "designated_coursework_template",
+    "sections": [
+      "Введение",
+      "Анализ предметной области",
+      "Проектирование",
+      "Реализация",
+      "Заключение",
+      "Список использованных источников",
+      "Приложения"
+    ]
+  }
+}
