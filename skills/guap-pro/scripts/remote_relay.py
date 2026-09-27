@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ssh-user", required=True)
     parser.add_argument("--ssh-key", required=True, type=Path)
     parser.add_argument("--ssh-binary", default="ssh")
-    parser.add_argument("--remote-port", type=int, default=18765)
+    parser.add_argument("--remote-port", type=int, default=18769)
     parser.add_argument("--local-port", type=int, default=8765)
     parser.add_argument("--public-url", required=True)
     parser.add_argument("--ttl", type=int, default=300)

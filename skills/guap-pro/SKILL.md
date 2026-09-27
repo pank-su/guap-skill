@@ -76,7 +76,7 @@ default. Use the SSH-backed remote relay after approval:
 
 ```text
 terminal(
-  command="python3 skills/guap-pro/scripts/remote_relay.py --ssh-host <approved-vps> --ssh-user <user> --ssh-key ~/.ssh/<key> --remote-port 18765 --public-url https://<approved-host>/guap-relay --approval-scope 'GUAP read-only access'",
+  command="python3 skills/guap-pro/scripts/remote_relay.py --ssh-host <approved-vps> --ssh-user <user> --ssh-key ~/.ssh/<key> --remote-port 18769 --public-url https://<approved-host>/guap-relay --approval-scope 'GUAP read-only access'",
   background=true,
   notify_on_complete=true,
   timeout=700
@@ -88,7 +88,7 @@ the reverse SSH listener on server loopback. Example Caddy route:
 
 ```caddyfile
 handle_path /guap-relay/* {
-    reverse_proxy 127.0.0.1:18765
+    reverse_proxy 127.0.0.1:18769
 }
 ```
 
