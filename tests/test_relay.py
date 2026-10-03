@@ -30,6 +30,27 @@ relay = load_module("guap_relay", RELAY)
 
 
 class RelayTests(unittest.TestCase):
+    def test_remember_me_is_an_explicit_checkbox_not_dropped(self) -> None:
+        source = "<form method='post'><input name='username'><input name='password' type='password'><input name='rememberMe' type='checkbox'></form>"
+        form = relay.RelaySession._extract_form("https://sso.guap.ru/start", source)
+        self.assertIsNotNone(form)
+        remember = next((f for f in form.fields if f.name == "rememberMe"), None)
+        self.assertIsNotNone(remember, "The upstream rememberMe choice must be preserved")
+        self.assertEqual(remember.kind, "checkbox")
+        session = relay.RelaySession("example-token")
+        session.form = form
+        state = relay.RelayState("example-token", session, "user", "login", Path("unused"))
+        handler = object.__new__(relay.RelayHandler)
+        page = handler._form_page(state)
+        self.assertIn("type='checkbox'", page)
+        self.assertIn("Запомнить меня", page)
+        self.assertNotIn("checked", page)
+        captured = []
+        session._request = lambda url, data=None: (captured.append(data) or ("https://pro.guap.ru/inside/profile", "<html>profile</html>"))
+        session._session_is_authenticated = lambda: True
+        self.assertEqual(session.submit({"username": ["example"], "password": ["example-value"], "rememberMe": ["on"]}), "authenticated")
+        self.assertIn(b"rememberMe=on", captured[0])
+
     def test_extracts_hidden_login_fields_and_password(self) -> None:
         source = """
         <html><head><title>SSO</title></head><body>
@@ -69,10 +90,11 @@ class RelayTests(unittest.TestCase):
                 path="/", path_specified=True, secure=True, expires=None, discard=True,
                 comment=None, comment_url=None, rest={}, rfc2109=False,
             ))
+            session.last_http_status = 200
             if data is None:
-                return "https://pro.guap.ru/inside/profile", "<html>profile</html>"
+                return "https://pro.guap.ru/inside/profile", "<title>Личный кабинет ГУАП</title><a href='/logout'>Выйти</a>"
             captured.append(data)
-            return "https://pro.guap.ru/inside/profile", "<html>profile</html>"
+            return "https://pro.guap.ru/inside/profile", "<title>Личный кабинет ГУАП</title><a href='/logout'>Выйти</a>"
 
         session._request = fake_request  # type: ignore[method-assign]
         result = session.submit({"username": ["vasya"], "password": ["secret"]})
@@ -81,6 +103,25 @@ class RelayTests(unittest.TestCase):
         self.assertNotIn("secret", relay.json.dumps({"status": session.state}))
         self.assertIn(b"username=vasya", captured[0])
         self.assertIn(b"password=secret", captured[0])
+
+    def test_authenticated_jar_is_saved_with_original_domains(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'session' / 'cookie.txt'
+            jar = http.cookiejar.CookieJar()
+            from test_session_store import sample_cookie
+            jar.set_cookie(sample_cookie())
+            jar.set_cookie(sample_cookie('KEYCLOAK_IDENTITY', 'example-sso', 'sso.guap.ru', '/realms/master/'))
+            relay.save_cookie_to(path, '', jar=jar)
+            self.assertTrue(path.with_name('cookies.json').exists())
+            self.assertNotIn('KEYCLOAK', path.read_text())
+            self.assertIn('sso.guap.ru', path.with_name('cookies.json').read_text())
+
+    def test_relay_cannot_submit_credentials_outside_guap(self) -> None:
+        session = relay.RelaySession('example-token')
+        with patch.object(session.opener, 'open') as opened:
+            with self.assertRaises(RuntimeError):
+                session._request('https://evil.example/login', b'example-body')
+            opened.assert_not_called()
 
     def test_empty_password_cannot_complete_relay(self) -> None:
         session = relay.RelaySession("test-token")

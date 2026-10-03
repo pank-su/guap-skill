@@ -1,7 +1,9 @@
 # Diagnosing GUAP session persistence
 
-This is investigation and implementation guidance, not a shipped auto-renewal
-feature or permission to change a background monitor's authentication scope.
+In the current client, unchecked checkboxes are preserved as an explicit user
+choice; authenticated login saves domain/path-aware cookies in a private jar.
+`pro renew` and `renew_background.py` implement the bounded flow described below.
+They require a separate renewal permit and do not expand a monitor's read scope.
 
 ## Separate the two sessions
 

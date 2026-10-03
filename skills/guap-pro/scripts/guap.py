@@ -27,6 +27,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# File-style skill loading and direct CLI execution use the same sibling modules.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from session_store import SessionStore, SessionError, header_for, PRO, exact_origin, jar_from_cdp
+from session_client import SessionClient, background_tick, legacy_cabinet_header, record_failure
+
 BASE_URL = "https://pro.guap.ru"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
 
@@ -124,13 +129,14 @@ def href_id(href: str, prefix: str) -> int | None:
 
 
 def cookie() -> str:
-    value = os.environ.get("GUAP_COOKIE", "").strip()
-    if value:
-        return value
-    path = cookie_path()
-    if path.exists():
-        return path.read_text(encoding="utf-8").strip()
-    raise RuntimeError("No GUAP session. Run `python skills/guap-pro/scripts/guap.py pro auth` first or set GUAP_COOKIE.")
+    with SessionStore().locked() as store:
+        jar, generation = store.load()
+        if generation is not None:
+            return header_for(jar, PRO + '/inside/profile')
+        value = os.environ.get('GUAP_COOKIE') or store.read('cookie.txt', optional=True)
+        if not value:
+            raise SessionError('reauth_required')
+        return legacy_cabinet_header(value)
 
 
 def request(path: str, params: dict[str, Any] | None = None) -> str:
@@ -138,19 +144,8 @@ def request(path: str, params: dict[str, Any] | None = None) -> str:
     url = BASE_URL + path
     if query:
         url += "?" + query
-    req = urllib.request.Request(url, headers={"Cookie": cookie(), "User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            final_url = response.geturl().lower()
-            lowered = body.lower()
-            if "sso.guap.ru" in final_url or "вход в личный кабинет" in lowered:
-                raise RuntimeError("reauth_required: GUAP session has expired")
-            return body
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"GUAP returned HTTP {exc.code} for {path}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Could not reach GUAP: {exc.reason}") from exc
+    with SessionStore().locked() as store:
+        return SessionClient(store).get(url)
 
 
 def parse_tasks(source: str) -> list[dict[str, Any]]:
@@ -431,10 +426,8 @@ def query_params(**values: Any) -> dict[str, Any]:
 
 
 def save_cookie(value: str) -> None:
-    path = cookie_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value.strip(), encoding="utf-8")
-    path.chmod(0o600)
+    with SessionStore().locked() as store:
+        store.import_legacy(value)
 
 
 def _read_exact(sock: socket.socket, size: int) -> bytes:
@@ -594,9 +587,15 @@ def browser_cookie(timeout: int, browser_command: str | None, keep_browser: bool
                     current_url = url_result.get("result", {}).get("value", "")
                     counter, cookie_result = _cdp_call(sock, counter, "Network.getAllCookies")
                     cookies = cookie_result.get("cookies", [])
-                    guap = [item for item in cookies if "guap.ru" in item.get("domain", "")]
-                    if guap and "pro.guap.ru" in current_url and "sso.guap.ru" not in current_url:
-                        return "; ".join(f"{item['name']}={item['value']}" for item in guap)
+                    parsed_current = urllib.parse.urlsplit(current_url)
+                    if exact_origin(current_url) == PRO and parsed_current.path.startswith('/inside/'):
+                        counter, verified = _cdp_call(sock, counter, 'Runtime.evaluate', {
+                            'expression': "document.title.includes('Личный кабинет ГУАП') && !!document.querySelector('a[href=\"/logout\"]')"})
+                        if verified.get('result', {}).get('value') is True:
+                            jar = jar_from_cdp(cookies)
+                            with SessionStore().locked() as store:
+                                store.save(jar, secrets.token_hex(16))
+                            return header_for(jar, PRO + '/inside/profile')
                 except Exception:
                     pass
                 finally:
@@ -627,6 +626,8 @@ def main(argv: list[str] | None = None) -> int:
     auth.add_argument("--keep-browser", action="store_true")
     auth.add_argument("--profile-dir", type=Path, default=hermes_home() / "guap-pro" / "chrome-profile")
     commands.add_parser("check")
+    renew = commands.add_parser('renew', help='Restore GUAP through existing SSO; never enter credentials')
+    renew.add_argument('--background', action='store_true', help='Quiet active-hours tick with deduplicated notices')
     tasks = commands.add_parser("tasks")
     tasks.add_argument("--semester", type=int)
     tasks.add_argument("--subject", type=int)
@@ -646,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     materials.add_argument("--subject", type=int)
     materials.add_argument("--text")
     materials.add_argument("--per-page", type=int)
+    materials.add_argument("--page", type=int)
     materials.add_argument("--format", choices=("table", "json"), default="table")
     profile = commands.add_parser("profile")
     profile.add_argument("--format", choices=("table", "json"), default="table")
@@ -673,12 +675,14 @@ def main(argv: list[str] | None = None) -> int:
     reports.add_argument("--status", type=int)
     reports.add_argument("--text")
     reports.add_argument("--per-page", type=int)
+    reports.add_argument("--page", type=int)
     reports.add_argument("--format", choices=("table", "json"), default="table")
     notices = commands.add_parser("notices")
     notices.add_argument("--subject", type=int)
     notices.add_argument("--type")
     notices.add_argument("--search", dest="text")
     notices.add_argument("--per-page", type=int)
+    notices.add_argument("--page", type=int)
     notices.add_argument("--format", choices=("table", "json"), default="table")
     professors = commands.add_parser("professors")
     professors.add_argument("--search", dest="fullname")
@@ -689,9 +693,27 @@ def main(argv: list[str] | None = None) -> int:
     professors.add_argument("--format", choices=("table", "json"), default="table")
     args = parser.parse_args(argv)
     try:
+        if args.command == 'renew':
+            if args.background:
+                notice = background_tick()
+                if notice:
+                    print(notice)
+            else:
+                with SessionStore().locked() as store:
+                    client = SessionClient(store)
+                    try:
+                        client.silent_renew()
+                    except SessionError as error:
+                        if str(error) == 'reauth_required':
+                            record_failure(store, client.generation, error)
+                        raise
+                print('Authentication valid; silent SSO renewal completed')
+            return 0
         if args.command == "auth":
-            value = args.cookie_file.read_text(encoding="utf-8") if args.cookie_file else browser_cookie(args.timeout, args.browser_command, args.keep_browser, args.profile_dir)
-            save_cookie(value)
+            if args.cookie_file:
+                save_cookie(args.cookie_file.read_text(encoding='utf-8'))
+            else:
+                browser_cookie(args.timeout, args.browser_command, args.keep_browser, args.profile_dir)
             print(f"Cookie saved to {cookie_path()}")
             return 0
         if args.command == "check":
@@ -710,7 +732,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "materials":
             output(parse_materials(request("/inside/student/materials", query_params(
-                semester=args.semester, subject=args.subject, text=args.text, perPage=args.per_page,
+                semester=args.semester, subject=args.subject, text=args.text, perPage=args.per_page, page=args.page,
             ))), args.format)
             return 0
         if args.command == "profile":
@@ -735,12 +757,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "reports":
             output(parse_reports(request("/inside/student/reports", query_params(
-                semester=args.semester, subject=args.subject, status=args.status, text=args.text, perPage=args.per_page,
+                semester=args.semester, subject=args.subject, status=args.status, text=args.text, perPage=args.per_page, page=args.page,
             ))), args.format)
             return 0
         if args.command == "notices":
             output(parse_notices(request("/inside/student/notice", query_params(
-                subject=args.subject, type=args.type, text=args.text, perPage=args.per_page,
+                subject=args.subject, type=args.type, text=args.text, perPage=args.per_page, page=args.page,
             ))), args.format)
             return 0
         if args.command == "professors":

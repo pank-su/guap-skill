@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
+import datetime as dt
+import http.cookiejar
+import io
+import json
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from unittest.mock import patch
 from pathlib import Path
+
+from test_session_store import sample_cookie
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "skills/guap-pro/scripts/guap.py"
@@ -14,6 +22,8 @@ assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
+
+STATE = 'example-state-value-long-enough'
 
 
 class ParserTests(unittest.TestCase):
@@ -128,6 +138,58 @@ class ParserTests(unittest.TestCase):
 
 
 class BrowserAuthenticationTests(unittest.TestCase):
+    def test_cli_renew_routes_to_silent_client_without_browser(self) -> None:
+        sys.path.insert(0, str(SCRIPT.parent))
+        import session_client
+        with tempfile.TemporaryDirectory() as directory, patch.dict(module.os.environ, {'HERMES_HOME': directory}), patch.object(session_client.SessionClient, 'silent_renew') as renew, patch.object(module, 'browser_cookie') as browser:
+            self.assertEqual(module.main(['pro', 'renew']), 0)
+            renew.assert_called_once()
+            browser.assert_not_called()
+
+    def test_foreground_interactive_renew_records_blocked_generation(self) -> None:
+        sys.path.insert(0, str(SCRIPT.parent))
+        import session_client
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / 'guap-pro'
+            root.mkdir(mode=0o700)
+            permit = root / 'renewal-permit.json'
+            permit.write_text(json.dumps({'version': 1, 'enabled': True,
+                'scope': ['silent_sso', 'background_sso'], 'approved_at': '2026-10-03T10:00:00+03:00'}))
+            permit.chmod(0o600)
+            store = session_client.SessionStore(root)
+            with store.locked():
+                jar = http.cookiejar.CookieJar()
+                jar.set_cookie(sample_cookie('KEYCLOAK_IDENTITY', 'example-sso', 'sso.guap.ru', '/realms/master/'))
+                store.save(jar, 'a' * 32)
+            auth = session_client.SSO + session_client.AUTH_PATH + '?' + urllib.parse.urlencode({
+                'state': STATE, 'response_type': 'code', 'client_id': 'example',
+                'redirect_uri': session_client.PRO + '/oauth/callback'})
+            calls = []
+            def transport(url, jar, deadline, **kwargs):
+                calls.append(url)
+                if len(calls) == 1:
+                    return session_client.WireResponse(302, {'Location': auth}, '')
+                return session_client.WireResponse(200, {}, '<html>captcha or one-time confirmation</html>')
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with patch.dict(module.os.environ, {'HERMES_HOME': str(home)}), \
+                    patch.object(session_client, 'wire', side_effect=transport), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(module.main(['pro', 'renew']), 1)
+            with store.locked():
+                state = json.loads(store.read('renewal-state.json'))
+            self.assertEqual(state['status'], 'reauth_required')
+            self.assertEqual(state['generation'], 'a' * 32)
+            self.assertFalse(state['notified'])
+            self.assertEqual(len(calls), 2)
+            now = dt.datetime(2026, 10, 3, 14, tzinfo=dt.timezone(dt.timedelta(hours=3)))
+            first = session_client.background_tick(store, transport=transport, now=now)
+            second = session_client.background_tick(store, transport=transport, now=now)
+            self.assertIn('🔐', first)
+            self.assertEqual(second, '')
+            self.assertEqual(len(calls), 2)
+
     def test_browser_command_preserves_absolute_path_with_spaces(self) -> None:
         binary = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         self.assertEqual(module._browser_command(binary), [binary])
