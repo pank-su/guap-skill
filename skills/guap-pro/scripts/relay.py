@@ -55,6 +55,14 @@ except ImportError:  # pragma: no cover - supports package-style imports
 
 RELAY_DEFAULT_TTL = 300
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+from session_store import SessionStore, new_jar, exact_origin, SessionError
+from session_client import WireResponse, verified_profile
+
+
+class GuapRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        exact_origin(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def hermes_home() -> Path:
@@ -116,12 +124,14 @@ class RelaySession:
     def __init__(self, token: str, ttl: int = RELAY_DEFAULT_TTL) -> None:
         self.token_digest = token_digest(token)
         self.expires_at = time.time() + ttl
-        self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        self.jar = new_jar()
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+            GuapRedirectHandler(), urllib.request.HTTPCookieProcessor(self.jar))
         self.current_url = BASE_URL + "/inside/profile"
         self.form: LoginForm | None = None
         self.state = "created"
         self.error = ""
+        self.last_http_status = None
         self._lock = threading.RLock()
 
     def expired(self) -> bool:
@@ -131,6 +141,7 @@ class RelaySession:
         return secrets.compare_digest(self.token_digest, token_digest(token)) and not self.expired()
 
     def _request(self, url: str, data: bytes | None = None) -> tuple[str, str]:
+        exact_origin(url)
         request = urllib.request.Request(
             url,
             data=data,
@@ -139,13 +150,15 @@ class RelaySession:
         )
         try:
             with self.opener.open(request, timeout=30) as response:
+                self.last_http_status = response.code
                 body = response.read(2_000_000).decode("utf-8", errors="replace")
                 return response.geturl(), body
         except urllib.error.HTTPError as exc:
+            self.last_http_status = exc.code
             body = exc.read(2_000_000).decode("utf-8", errors="replace")
             return exc.geturl(), body
-        except urllib.error.URLError as exc:
-            raise RelayError(f"GUAP is unreachable: {exc.reason}") from exc
+        except urllib.error.URLError:
+            raise RelayError('relay_failed: upstream_unreachable') from None
 
     @staticmethod
     def _extract_form(url: str, body: str) -> LoginForm | None:
@@ -163,14 +176,14 @@ class RelaySession:
             kind = input_node.attrs.get("type", "text").lower()
             if kind in {"submit", "button", "reset", "file"}:
                 continue
-            if kind in {"checkbox", "radio"} and "checked" not in input_node.attrs:
+            if kind == "radio" and "checked" not in input_node.attrs:
                 continue
             fields.append(
                 FormField(
                     name=name,
-                    value=input_node.attrs.get("value", ""),
-                    kind="password" if kind == "password" else "hidden" if kind == "hidden" else "text",
-                    label=input_node.attrs.get("aria-label", "") or input_node.attrs.get("placeholder", "") or name,
+                    value=input_node.attrs.get("value", "on" if kind == "checkbox" else ""),
+                    kind=kind if kind in {"password", "hidden", "checkbox"} else "text",
+                    label=input_node.attrs.get("aria-label", "") or input_node.attrs.get("placeholder", "") or ("Запомнить меня" if name == "rememberMe" else name),
                     required="required" in input_node.attrs,
                 )
             )
@@ -242,7 +255,7 @@ class RelaySession:
 
     def _session_is_authenticated(self) -> bool:
         url, body = self._request(BASE_URL + "/inside/profile")
-        return not response_is_login(url, body) and "sso.guap.ru" not in url.lower()
+        return exact_origin(url) == BASE_URL and verified_profile(WireResponse(self.last_http_status, {}, body))
 
     def cookie_header(self) -> str:
         return "; ".join(f"{item.name}={item.value}" for item in self.jar)
@@ -338,11 +351,11 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
             if state.session.form is None:
                 state.session.load()
             self._send(200, self._form_page(state))
-        except RelayError as exc:
+        except (RelayError, SessionError) as exc:
             state.session.error = str(exc)
             state.session.state = "failed"
-            state.done.set()
             self._send(502, self._page("Не удалось открыть вход", escape(str(exc))))
+            state.done.set()
 
     def do_POST(self) -> None:  # noqa: N802
         state = self._state()
@@ -361,16 +374,16 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
                 cookie = state.session.cookie_header()
                 if not cookie:
                     raise RelayError("relay_failed: GUAP returned no session cookie")
-                save_cookie_to(state.cookie_path, cookie)
-                state.done.set()
+                save_cookie_to(state.cookie_path, cookie, jar=state.session.jar)
                 self._send(200, self._page("Готово", "Авторизация завершена. Вернитесь в Telegram и закройте эту вкладку."))
+                state.done.set()
             else:
                 self._send(200, self._form_page(state))
-        except RelayError as exc:
+        except (RelayError, SessionError) as exc:
             state.session.error = str(exc)
             state.session.state = "failed"
-            state.done.set()
             self._send(502, self._page("Авторизация не завершена", "Сессия ГУАП не подтверждена. Вернитесь в Telegram."))
+            state.done.set()
 
     @staticmethod
     def _page(title: str, message: str) -> str:
@@ -386,20 +399,27 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
                 continue
             visible_number += 1
             label = field.label or f"Поле {visible_number}"
+            if field.kind == "checkbox":
+                fields.append(f"<label><input type='checkbox' name='{escape(field.name)}' value='{escape(field.value)}'> {escape(label)}</label>")
+                continue
             fields.append(
                 f"<label>{escape(label)}<input type='{field.kind}' name='{escape(field.name)}' autocomplete='{'current-password' if field.kind == 'password' else 'username'}' {'required' if field.required else ''}></label>"
             )
         return f"""<!doctype html>
 <meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
 <title>Вход в ГУАП</title>
-<style>body{{font:16px system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem;background:#f5f5f5}}main{{background:#fff;padding:1.5rem;border-radius:12px}}label{{display:block;margin:1rem 0}}input{{display:block;width:100%;box-sizing:border-box;padding:.7rem;margin-top:.35rem;border:1px solid #aaa;border-radius:6px}}button{{padding:.75rem 1rem;border:0;border-radius:6px;background:#165dff;color:#fff;font-weight:600}}.warning{{background:#fff3cd;padding:1rem;border-radius:8px}}</style>
+<style>body{{font:16px system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem;background:#f5f5f5}}main{{background:#fff;padding:1.5rem;border-radius:12px}}label{{display:block;margin:1rem 0}}input{{display:block;width:100%;box-sizing:border-box;padding:.7rem;margin-top:.35rem;border:1px solid #aaa;border-radius:6px}}input[type=checkbox]{{display:inline;width:auto;margin-right:.4rem}}button{{padding:.75rem 1rem;border:0;border-radius:6px;background:#165dff;color:#fff;font-weight:600}}.warning{{background:#fff3cd;padding:1rem;border-radius:8px}}</style>
 <main><h1>Вход в ГУАП</h1><p><b>Разрешённый scope:</b> {escape(state.approval_scope)}</p><p class='warning'>Данные формы будут переданы через Hermes-машину на сайт ГУАП. Hermes не сохраняет пароль и не показывает его в Telegram. Продолжая, вы подтверждаете отправку формы.</p><form method='post'>{''.join(fields)}<button type='submit'>Войти</button></form></main>"""
 
 
-def save_cookie_to(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value.strip(), encoding="utf-8")
-    path.chmod(0o600)
+def save_cookie_to(path: Path, value: str, *, jar=None) -> None:
+    if path.name != 'cookie.txt':
+        raise SessionError('invalid_cookie_filename')
+    with SessionStore(path.parent).locked() as store:
+        if jar is not None:
+            store.save(jar, secrets.token_hex(16))
+        else:
+            store.import_legacy(value)
 
 
 class RelayHTTPServer(http.server.ThreadingHTTPServer):

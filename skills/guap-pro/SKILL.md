@@ -1,10 +1,10 @@
 ---
 name: guap-pro
 description: Read GUAP tasks and authorize through Hermes.
-version: 0.6.3
+version: 0.7.0
 author: Vasilii Pankov (pank-su), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms: [linux, macos]
 metadata:
   hermes:
     tags: [GUAP, CLI, Telegram, authentication, labs]
@@ -51,6 +51,7 @@ from that directory using `scripts/guap.py`.
 
 ```text
 terminal(command="python3 skills/guap-pro/scripts/guap.py pro check")
+terminal(command="python3 skills/guap-pro/scripts/guap.py pro renew")
 terminal(command="python3 skills/guap-pro/scripts/guap.py pro tasks --format json")
 terminal(command="python3 skills/guap-pro/scripts/guap.py pro task <TASK_ID> --format json")
 terminal(command="python3 skills/guap-pro/scripts/guap.py pro materials --format json")
@@ -188,8 +189,9 @@ The relay:
 - expires the session after a short TTL;
 - keeps upstream cookies in an isolated in-memory cookie jar;
 - preserves hidden fields, CSRF fields, redirects, and multi-step forms where possible;
-- writes only the resulting Cookie header to `$HERMES_HOME/guap-pro/cookie.txt`;
-- uses mode `0600` for the cookie file;
+- persists only verified scoped session cookies in `cookies.json`, plus a pro-only
+  `cookie.txt` compatibility export under `$HERMES_HOME/guap-pro`;
+- uses mode `0600` for files and `0700` for the private session directory;
 - never logs request paths, form bodies, passwords, or cookies;
 - destroys the in-memory jar after completion or expiry; on tunnel abort it returns
   without waiting for an in-flight upstream request and defers lock-held cleanup
@@ -215,7 +217,9 @@ keep the URL short-lived, and do not send it to anyone except the approving user
 1. Verify a current-session approval or an enabled, exact-scope standing read-only
    permit before reading the cookie or requesting cabinet data.
 2. If the cookie session may be valid, run `guap.py pro check` through `terminal`.
-3. If the result contains `reauth_required`, obtain a separate current-session
+3. With a valid separately approved renewal permit, reads may perform one bounded
+   silent SSO restoration before returning `reauth_required`. They never start a
+   browser or credential relay. If the result still contains `reauth_required`, obtain a separate current-session
    approval for authentication. Then choose authentication from the actual
    communication channel: use `remote_relay.py` for Telegram/remote chat; use
    `guap.py pro auth` only after the user explicitly says they can use the same Mac.
@@ -240,6 +244,43 @@ keep the URL short-lived, and do not send it to anyone except the approving user
     requirements and unresolved conflicts; never pass cookies, relay links or credentials.
 12. Before any upload, ask for a separate Telegram confirmation and re-check the task.
 
+## Silent Session Renewal
+
+Silent restoration and background SSO renewal are opt-in, separately from cabinet
+read permissions. Require a current user approval naming both behaviors before
+creating `$HERMES_HOME/guap-pro/renewal-permit.json`, owned by the user with mode
+`0600`, containing exactly scope `["silent_sso", "background_sso"]`, `version: 1`,
+`enabled: true`, and an ISO `approved_at` with timezone. Approval lasts until
+revocation; set `enabled: false` and pause the separate renewal job to revoke it.
+Missing, malformed, unsafe or expanded permits fail closed before SSO traffic.
+
+The client persists scoped cookies in `cookies.json` (mode `0600`) and maintains a
+pro-only `cookie.txt` compatibility export. All clients use the same private lock
+and atomic writes. POSIX directory handles, no-follow checks and file locks are
+required; this hardened workflow currently supports Linux and macOS.
+
+- `pro renew` performs a fresh bounded OAuth flow using existing SSO, validates
+  state and callback, and verifies the authenticated profile before persistence.
+  It never stores/enters passwords or accesses the token endpoint.
+- Legacy flat headers bootstrap only the known Keycloak identity cookies, sent
+  once to the exact SSO authorization endpoint. Other legacy scopes are not
+  guessed/imported; the new jar comes from the verified fresh login responses.
+- Cabinet reads retain cookie rotation and make at most one silent recovery after
+  expiry only with the independent permit. They never start a credential relay.
+- Install `scripts/renew_background.py` as a no-agent scheduler script in the
+  active profile. Prefer a separate paused job during review and enable it only
+  after independent fail-closed review and an approved live successful renewal.
+  Example cadence: `0 8,14,20 * * *` in local time, with an additional runtime
+  no-network gate from 23:00 through 07:59. Success emits no notification.
+- Interactive password/OTP/CAPTCHA/consent responses stop renewal and emit one
+  notice. Background and automatic restoration stay blocked for that failed
+  authentication generation until a fresh approved login changes it. A repeated
+  transient failure is deduplicated and can retry at the next scheduled tick.
+- A new login still requires separate approval. The permit never authorizes
+  saving a password, starting a relay, changing the account or submitting work.
+- Do not claim multi-day survival until observed across the former daily expiry
+  window; cookie/token expiry is not the realm's absolute session maximum.
+
 ## Source Policy
 
 Use information in this order:
@@ -255,13 +296,15 @@ live task. If sources conflict, preserve the conflict and ask the user.
 
 ## Pitfalls
 
-- GUAP may invalidate sessions after several hours. A persistent browser profile or
-  cookie file cannot defeat a server-side TTL; detect `reauth_required` every time.
+- Distinguish an expired cabinet session from an expired SSO session. Diagnose
+  `rememberMe` form handling, cookie scope/rotation and silent SSO recognition using
+  `references/session-persistence.md`; do not infer a server-side daily maximum
+  from a cookie's expiry. Existing read-only permits do not authorize auto-renewal.
 - SSO may use JavaScript, CAPTCHA, hidden fields, or a second-factor step. Stop with
   `relay_failed` if the form cannot be forwarded reliably.
 - Never retry a login or submission blindly: a relay may have reached GUAP already.
 - Never use the relay for uploads unless the user approved that exact action.
-- Never commit `$HERMES_HOME/guap-pro/cookie.txt`, SSH private keys, or a browser profile.
+- Never commit the private GUAP session directory, SSH private keys, or a browser profile.
 - `guap.py pro auth` launches a local browser. Never choose it merely because the
   conversation is in Telegram; remote chat requires `remote_relay.py` or an explicit
   statement that the user is at the same computer.
@@ -288,5 +331,6 @@ no password, cookie value, or private task URL in the returned Hermes context.
 ## References
 
 - `references/guap-rules.md` — source precedence and cabinet rules.
+- `references/session-persistence.md` — session diagnostics and bounded renewal requirements.
 Teacher and subject preparation references are maintained in `labflow-guap`, not
 in this skill.

@@ -1,0 +1,47 @@
+diff --git a/scripts/guap_labflow_sync.py b/scripts/guap_labflow_sync.py
+index 22143a9..805d684 100755
+--- a/scripts/guap_labflow_sync.py
++++ b/scripts/guap_labflow_sync.py
+@@ -594,0 +595,14 @@ def run_once(
++    def fetch_with_current_cookie(url: str, _snapshot: str) -> dict[str, Any]:
++        # CLI reads may have restored the application session. Never reuse the
++        # pre-query credential snapshot for material downloads.
++        fd = os.open(cookie_path, os.O_RDONLY | os.O_NOFOLLOW)
++        with os.fdopen(fd, 'r', encoding='utf-8') as handle:
++            info = os.fstat(handle.fileno())
++            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
++                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
++                raise RuntimeError('An owned mode-0600 cookie file is required')
++            current = handle.read(131073).strip()
++            if not current or len(current) > 131072 or '\r' in current or '\n' in current:
++                raise RuntimeError('Invalid current cookie snapshot')
++        return fetch_source(url, current)
++
+@@ -600 +614 @@ def run_once(
+-        fetch_source=fetch_source,
++        fetch_source=fetch_with_current_cookie,
+diff --git a/scripts/tests/test_guap_labflow_sync.py b/scripts/tests/test_guap_labflow_sync.py
+index b88dcf4..c73dd86 100644
+--- a/scripts/tests/test_guap_labflow_sync.py
++++ b/scripts/tests/test_guap_labflow_sync.py
+@@ -521,0 +522,20 @@ class GuapLabflowSyncTests(unittest.TestCase):
++    def test_download_reloads_cookie_after_cli_restoration(self):
++        module = load_module()
++        with tempfile.TemporaryDirectory() as directory:
++            temp = Path(directory)
++            permit = temp / 'permit.json'; cookie = temp / 'cookie.txt'
++            permit.write_text('{"enabled":true,"scope":["tasks","task","materials","subjects"]}'); permit.chmod(0o600)
++            cookie.write_text('PHPSESSID=old-example'); cookie.chmod(0o600)
++            received = []
++            def runner(argv, **kwargs):
++                command = argv[3]
++                if command == 'subjects':
++                    cookie.write_text('PHPSESSID=renewed-example')
++                records = [{'subject':'Механика','name':'Методичка','urls':['/inside/student/materials/example/download']}] if command == 'materials' else []
++                return SimpleNamespace(returncode=0, stdout=json.dumps(records), stderr='')
++            def fetch(url, value):
++                received.append(value)
++                return {'filename':'example.pdf','data':b'PDF','kind':'file'}
++            module.run_once(permit_path=permit, root=temp / 'GUAP', state_path=temp / 'state.json',
++                            cookie_path=cookie, guap_cli=Path('/safe/guap.py'), runner=runner, fetch_source=fetch)
++            self.assertEqual(received, ['PHPSESSID=renewed-example'])
