@@ -255,8 +255,10 @@ live task. If sources conflict, preserve the conflict and ask the user.
 
 ## Pitfalls
 
-- GUAP may invalidate sessions after several hours. A persistent browser profile or
-  cookie file cannot defeat a server-side TTL; detect `reauth_required` every time.
+- Distinguish an expired cabinet session from an expired SSO session. Diagnose
+  `rememberMe` form handling, cookie scope/rotation and silent SSO recognition using
+  `references/session-persistence.md`; do not infer a server-side daily maximum
+  from a cookie's expiry. Existing read-only permits do not authorize auto-renewal.
 - SSO may use JavaScript, CAPTCHA, hidden fields, or a second-factor step. Stop with
   `relay_failed` if the form cannot be forwarded reliably.
 - Never retry a login or submission blindly: a relay may have reached GUAP already.
@@ -288,5 +290,6 @@ no password, cookie value, or private task URL in the returned Hermes context.
 ## References
 
 - `references/guap-rules.md` — source precedence and cabinet rules.
+- `references/session-persistence.md` — session diagnostics and bounded renewal requirements.
 Teacher and subject preparation references are maintained in `labflow-guap`, not
 in this skill.
